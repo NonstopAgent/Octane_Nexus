@@ -1,0 +1,18 @@
+{
+  "app\\page.tsx -> @/lib/supabaseClient": {
+    "id": "app\\page.tsx -> @/lib/supabaseClient",
+    "files": [
+      "static/chunks/_app-pages-browser_lib_supabaseClient_ts.js"
+    ]
+  },
+  "app\\page.tsx -> @stripe/stripe-js": {
+    "id": "app\\page.tsx -> @stripe/stripe-js",
+    "files": [
+      "static/chunks/_app-pages-browser_node_modules_stripe_stripe-js_dist_stripe_esm_js.js"
+    ]
+  },
+  "lib\\gemini.ts -> @/lib/supabaseClient": {
+    "id": "lib\\gemini.ts -> @/lib/supabaseClient",
+    "files": []
+  }
+}
