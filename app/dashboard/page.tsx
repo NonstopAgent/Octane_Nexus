@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { loadStripe } from '@stripe/stripe-js';
 import { Flame, Loader2, Link2, X, Instagram, MessageCircle, Shield, Zap, CheckCircle2, Crown, Share2, Sparkles, Trophy, TrendingUp } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
+import { getMockUser, isLocalhost, hasMockSession } from '@/lib/mockAuth';
 import type { VideoBlueprint, PlatformSpecificBlueprints } from '@/lib/gemini';
 
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
@@ -69,12 +70,32 @@ export default function DashboardPage() {
   const [alphaSuccess, setAlphaSuccess] = useState<boolean>(false);
   const [communityWins, setCommunityWins] = useState<Array<{ idea: string; niche: string }>>([]);
   const [communityWinsLoading, setCommunityWinsLoading] = useState<boolean>(true);
+  const [communityInsights, setCommunityInsights] = useState<{ dominantVibe: string | null; viralPotential: number | null } | null>(null);
 
   useEffect(() => {
     let isMounted = true;
 
     async function loadData() {
       try {
+        // Check for mock user first (localhost only)
+        if (isLocalhost()) {
+          const mockUser = getMockUser();
+          if (mockUser) {
+            if (!isMounted) return;
+            // Set mock user data
+            setHasFounderLicense(mockUser.founder_license || mockUser.purchased_package_type === 'vault');
+            setFullName(mockUser.email.split('@')[0]);
+            setStreak(0);
+            setStreakLoading(false);
+            setBlueprintsLoading(false);
+            setCommunityWinsLoading(false);
+            setBlueprints([]);
+            // Clear any error since mock user is authenticated
+            setError(null);
+            return;
+          }
+        }
+
         const {
           data: { user },
           error: userError,
@@ -812,15 +833,34 @@ export default function DashboardPage() {
                 type="button"
                 onClick={async () => {
                   try {
-                    const {
-                      data: { user },
-                    } = await supabase.auth.getUser();
-                    const referralLink = `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}?ref=${user?.id}`;
+                    // Check for mock user first
+                    let userId: string | undefined;
+                    if (isLocalhost()) {
+                      const mockUser = getMockUser();
+                      if (mockUser) {
+                        userId = mockUser.id;
+                      }
+                    }
+                    
+                    // Fall back to Supabase user if no mock user
+                    if (!userId) {
+                      const {
+                        data: { user },
+                      } = await supabase.auth.getUser();
+                      userId = user?.id;
+                    }
+                    
+                    if (!userId) {
+                      throw new Error('No user found');
+                    }
+                    
+                    const referralLink = `${typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000'}?ref=${userId}`;
                     await navigator.clipboard.writeText(referralLink);
                     setReferralCopied(true);
                     setTimeout(() => setReferralCopied(false), 3000);
                   } catch (err) {
                     console.error('Failed to copy referral link:', err);
+                    alert('Failed to copy referral link. Please try again.');
                   }
                 }}
                 className="inline-flex min-h-[56px] items-center justify-center gap-2 rounded-full border-2 border-emerald-500 bg-emerald-500 px-6 text-base font-semibold text-slate-950 shadow-lg transition-all hover:border-emerald-400 hover:bg-emerald-400 hover:shadow-xl hover:shadow-emerald-500/60 hover:scale-[1.02]"
@@ -829,8 +869,8 @@ export default function DashboardPage() {
                 {referralCopied ? 'Copied!' : 'Share Referral Link'}
               </button>
               {referralCopied && (
-                <div className="absolute -top-12 left-1/2 -translate-x-1/2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-300 shadow-lg whitespace-nowrap animate-in fade-in slide-in-from-bottom-2 duration-300">
-                  Referral link copied!
+                <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-300 shadow-lg whitespace-nowrap animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  Referral Link Copied!
                 </div>
               )}
             </div>

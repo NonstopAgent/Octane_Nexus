@@ -67,7 +67,7 @@ export function hasMockSession(): boolean {
 // Create default mock user with vault access
 export function createMockUser(): MockUser {
   return {
-    id: `mock_user_${Date.now()}`,
+    id: 'dev_admin',
     email: 'admin@octanenexus.com',
     has_purchased_package: true,
     purchased_package_type: 'vault',

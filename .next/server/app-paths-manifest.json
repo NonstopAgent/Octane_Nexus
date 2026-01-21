@@ -1,4 +1,6 @@
 {
+  "/api/generate-image/route": "app/api/generate-image/route.js",
   "/page": "app/page.js",
-  "/identity/page": "app/identity/page.js"
+  "/identity/page": "app/identity/page.js",
+  "/login/page": "app/login/page.js"
 }

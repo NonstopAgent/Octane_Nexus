@@ -1,65 +1,24 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect } from 'react';
 import Link from 'next/link';
-import { Target, Sparkles, CheckCircle2, Zap, ArrowRight, Lock } from 'lucide-react';
-import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabaseClient';
+import { useSearchParams } from 'next/navigation';
+import { Target, Sparkles, CheckCircle2, ArrowRight, Zap } from 'lucide-react';
 
 export default function HomePage() {
-  const router = useRouter();
-  const [selectedPackage, setSelectedPackage] = useState<'sniper' | 'vault' | null>(null);
-  const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const searchParams = useSearchParams();
 
-  async function handlePurchase(packageType: 'sniper' | 'vault') {
-    // Check if user is signed in
-    try {
-      const { supabase } = await import('@/lib/supabaseClient');
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
-
-      if (userError || !user) {
-        // Redirect to login with returnTo parameter pointing to /identity
-        window.location.href = `/login?returnTo=${encodeURIComponent('/identity')}`;
-        return;
-      }
-    } catch (err) {
-      console.error('Error checking auth:', err);
-      window.location.href = `/login?returnTo=${encodeURIComponent('/identity')}`;
-      return;
+  // ==================== REFERRAL TRACKING ====================
+  useEffect(() => {
+    const referralId = searchParams?.get('ref');
+    if (referralId) {
+      // Save referral source to cookie (expires in 30 days)
+      const expiryDate = new Date();
+      expiryDate.setTime(expiryDate.getTime() + (30 * 24 * 60 * 60 * 1000));
+      document.cookie = `referral_source=${referralId}; path=/; expires=${expiryDate.toUTCString()}`;
+      console.log('Referral tracked:', referralId);
     }
-
-    setCheckoutLoading(true);
-    try {
-      const response = await fetch('/api/checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ packageType }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to create checkout session');
-      }
-
-      // Redirect to Stripe Checkout
-      const stripe = (await import('@stripe/stripe-js')).loadStripe(
-        process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!
-      );
-      const stripeInstance = await stripe;
-      if (stripeInstance && data.sessionId) {
-        await stripeInstance.redirectToCheckout({ sessionId: data.sessionId });
-      }
-    } catch (err: any) {
-      console.error('Error starting checkout:', err);
-      alert(err.message || 'Failed to start checkout. Please try again.');
-    } finally {
-      setCheckoutLoading(false);
-    }
-  }
+  }, [searchParams]);
 
   return (
     <main className="mx-auto flex min-h-screen max-w-7xl flex-col gap-16 px-4 py-16 md:py-24">
@@ -138,23 +97,13 @@ export default function HomePage() {
                 </li>
               </ul>
             </div>
-            <button
-              onClick={() => handlePurchase('sniper')}
-              disabled={checkoutLoading}
-              className="mt-auto inline-flex min-h-[60px] w-full items-center justify-center gap-2 rounded-full border-2 border-amber-500 bg-amber-500 px-8 text-base font-semibold text-slate-950 shadow-lg transition-all hover:border-amber-400 hover:bg-amber-400 hover:shadow-xl hover:shadow-amber-500/60 hover:scale-[1.02] disabled:cursor-not-allowed disabled:border-amber-500/60 disabled:bg-amber-500/60 disabled:hover:scale-100"
+            <Link
+              href="/login?view=signup"
+              className="mt-auto inline-flex min-h-[60px] w-full items-center justify-center gap-2 rounded-full border-2 border-amber-500 bg-amber-500 px-8 text-base font-semibold text-slate-950 shadow-lg transition-all hover:border-amber-400 hover:bg-amber-400 hover:shadow-xl hover:shadow-amber-500/60 hover:scale-[1.02]"
             >
-              {checkoutLoading ? (
-                <>
-                  <Zap className="h-5 w-5 animate-pulse" />
-                  Processing...
-                </>
-              ) : (
-                <>
-                  Get Your Identity Package
-                  <ArrowRight className="h-5 w-5" />
-                </>
-              )}
-            </button>
+              Get Started
+              <ArrowRight className="h-5 w-5" />
+            </Link>
           </div>
 
           {/* Authority Vault Package */}
@@ -203,23 +152,13 @@ export default function HomePage() {
                 </li>
               </ul>
             </div>
-            <button
-              onClick={() => handlePurchase('vault')}
-              disabled={checkoutLoading}
-              className="mt-auto inline-flex min-h-[60px] w-full items-center justify-center gap-2 rounded-full border-2 border-amber-500 bg-amber-500 px-8 text-base font-semibold text-slate-950 shadow-lg transition-all hover:border-amber-400 hover:bg-amber-400 hover:shadow-xl hover:shadow-amber-500/60 hover:scale-[1.02] disabled:cursor-not-allowed disabled:border-amber-500/60 disabled:bg-amber-500/60 disabled:hover:scale-100"
+            <Link
+              href="/login?view=signup"
+              className="mt-auto inline-flex min-h-[60px] w-full items-center justify-center gap-2 rounded-full border-2 border-amber-500 bg-amber-500 px-8 text-base font-semibold text-slate-950 shadow-lg transition-all hover:border-amber-400 hover:bg-amber-400 hover:shadow-xl hover:shadow-amber-500/60 hover:scale-[1.02]"
             >
-              {checkoutLoading ? (
-                <>
-                  <Zap className="h-5 w-5 animate-pulse" />
-                  Processing...
-                </>
-              ) : (
-                <>
-                  Get Your Authority Vault
-                  <ArrowRight className="h-5 w-5" />
-                </>
-              )}
-            </button>
+              Get Started
+              <ArrowRight className="h-5 w-5" />
+            </Link>
           </div>
         </div>
       </section>
