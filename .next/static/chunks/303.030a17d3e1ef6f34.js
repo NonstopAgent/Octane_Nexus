@@ -1,1 +1,0 @@
-"use strict";(self.webpackChunk_N_E=self.webpackChunk_N_E||[]).push([[303],{3303:function(e,s,a){a.d(s,{supabase:function(){return p}});let p=(0,a(3053).eI)("https://zdvedfnpipgygvikoooa.supabase.co","sb_publishable_1EEA1MtGEqz8vWJAApQM6Q_FnjK-aaw")}}]);
