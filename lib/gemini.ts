@@ -1546,3 +1546,45 @@ export async function generateVideoIdeas(input: any): Promise<string[]> {
 export async function generateBios(input: any): Promise<string[]> {
     return ["Bio 1", "Bio 2", "Bio 3"]; 
 }
+
+// --- Library Insight Function (Fixes Vercel Build Error) ---
+export async function generateLibrarianInsight(note: string): Promise<string> {
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    return "Insight unavailable.";
+  }
+  
+  try {
+    const { GoogleGenerativeAI } = await import('@google/generative-ai');
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+    const prompt = `Analyze this idea and give 3 bullet points on how to monetize it: ${note}`;
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    return response.text();
+  } catch (error) {
+    console.error('Error generating librarian insight:', error);
+    return "Could not generate insight.";
+  }
+}
+
+// --- Platform-Specific Blueprints (Fixes Vercel Build Error) ---
+export async function generatePlatformSpecificBlueprints(content: string): Promise<string> {
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    return "Blueprints unavailable.";
+  }
+  
+  try {
+    const { GoogleGenerativeAI } = await import('@google/generative-ai');
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+    const prompt = `Create a viral LinkedIn post and a Twitter thread for this topic: ${content}`;
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    return response.text();
+  } catch (error) {
+    console.error('Error generating platform blueprints:', error);
+    return "Could not generate blueprints.";
+  }
+}
