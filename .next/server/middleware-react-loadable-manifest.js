@@ -1,1 +1,0 @@
-self.__REACT_LOADABLE_MANIFEST="{\"app\\\\identity\\\\page.tsx -> @/lib/gemini\":{\"id\":\"app\\\\identity\\\\page.tsx -> @/lib/gemini\",\"files\":[]},\"lib\\\\gemini.ts -> @/lib/supabaseClient\":{\"id\":\"lib\\\\gemini.ts -> @/lib/supabaseClient\",\"files\":[]}}"
