@@ -3,6 +3,7 @@ import Stripe from 'stripe';
 import { supabase } from '@/lib/supabaseClient';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+  // @ts-ignore
   apiVersion: '2024-11-20.acacia',
 });
 
