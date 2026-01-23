@@ -38,6 +38,7 @@ export async function POST(request: NextRequest) {
       n: 1,
     });
 
+    // @ts-ignore
     const imageUrl = response.data[0]?.url;
 
     if (!imageUrl) {
