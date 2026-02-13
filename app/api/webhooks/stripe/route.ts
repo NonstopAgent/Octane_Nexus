@@ -3,13 +3,22 @@ import Stripe from 'stripe';
 import { supabase } from '@/lib/supabaseClient';
 import { headers } from 'next/headers';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2024-11-20.acacia',
-});
-
-const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
-
 export async function POST(req: NextRequest) {
+  const stripeKey = process.env.STRIPE_SECRET_KEY;
+
+  if (!stripeKey) {
+    return new Response(
+      JSON.stringify({ error: "Stripe not configured" }),
+      { status: 501, headers: { "content-type": "application/json" } }
+    );
+  }
+
+  const stripe = new Stripe(stripeKey, {
+    apiVersion: '2023-10-16',
+  });
+
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
+
   try {
     const body = await req.text();
     const headersList = await headers();
@@ -26,10 +35,11 @@ export async function POST(req: NextRequest) {
 
     try {
       event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
-    } catch (err: any) {
-      console.error('Webhook signature verification failed:', err.message);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Signature verification failed';
+      console.error('Webhook signature verification failed:', message);
       return NextResponse.json(
-        { error: `Webhook Error: ${err.message}` },
+        { error: `Webhook Error: ${message}` },
         { status: 400 }
       );
     }
@@ -97,10 +107,10 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({ received: true });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Webhook error:', error);
     return NextResponse.json(
-      { error: error.message || 'Webhook handler failed' },
+      { error: error instanceof Error ? error.message : 'Webhook handler failed' },
       { status: 500 }
     );
   }

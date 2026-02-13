@@ -1,13 +1,14 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { loadStripe } from '@stripe/stripe-js';
 import { Flame, Loader2, Link2, X, Instagram, MessageCircle, Shield, Zap, CheckCircle2, Crown, Share2, Sparkles, Trophy, TrendingUp } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
-import { getMockUser, isLocalhost, hasMockSession } from '@/lib/mockAuth';
 import type { VideoBlueprint, PlatformSpecificBlueprints } from '@/lib/gemini';
+import CommandCenter from '@/components/dashboard/CommandCenter';
+import DemoNudge from '@/components/ui/DemoNudge';
 
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
 
@@ -37,8 +38,8 @@ type SavedBlueprint = {
   blueprint: VideoBlueprint | PlatformSpecificBlueprints | null;
 };
 
-export default function DashboardPage() {
-  const router = useRouter();
+function DashboardContent() {
+  useRouter();
   const searchParams = useSearchParams();
   const [streak, setStreak] = useState<number>(0);
   const [streakLoading, setStreakLoading] = useState<boolean>(true);
@@ -69,7 +70,7 @@ export default function DashboardPage() {
   const [alphaCodeError, setAlphaCodeError] = useState<string | null>(null);
   const [alphaSuccess, setAlphaSuccess] = useState<boolean>(false);
   const [communityWins, setCommunityWins] = useState<Array<{ idea: string; niche: string }>>([]);
-  const [communityWinsLoading, setCommunityWinsLoading] = useState<boolean>(true);
+  const [, setCommunityWinsLoading] = useState<boolean>(true);
   const [communityInsights, setCommunityInsights] = useState<{ dominantVibe: string | null; viralPotential: number | null } | null>(null);
 
   useEffect(() => {
@@ -77,25 +78,6 @@ export default function DashboardPage() {
 
     async function loadData() {
       try {
-        // Check for mock user first (localhost only)
-        if (isLocalhost()) {
-          const mockUser = getMockUser();
-          if (mockUser) {
-            if (!isMounted) return;
-            // Set mock user data
-            setHasFounderLicense(mockUser.founder_license || mockUser.purchased_package_type === 'vault');
-            setFullName(mockUser.email.split('@')[0]);
-            setStreak(0);
-            setStreakLoading(false);
-            setBlueprintsLoading(false);
-            setCommunityWinsLoading(false);
-            setBlueprints([]);
-            // Clear any error since mock user is authenticated
-            setError(null);
-            return;
-          }
-        }
-
         const {
           data: { user },
           error: userError,
@@ -157,7 +139,7 @@ export default function DashboardPage() {
 
           // Load linked accounts if they exist
           if (profile?.linked_accounts && typeof profile.linked_accounts === 'object') {
-            const accounts = profile.linked_accounts as any;
+            const accounts = profile.linked_accounts as Record<string, string | undefined>;
             setLinkedAccounts({
               instagram: accounts.instagram || accounts.Instagram || '',
               tiktok: accounts.tiktok || accounts.TikTok || '',
@@ -249,7 +231,6 @@ export default function DashboardPage() {
             const viralPotential = total > 0 ? Math.round((viralCount / total) * 100) : null;
 
             // Fetch blueprint hooks to determine dominant vibe
-            const allBlueprintIds = allPerformances.map((p) => p.blueprint_id);
             const viralBlueprintIds = allPerformances
               .filter((p) => p.status === 'viral')
               .map((p) => p.blueprint_id);
@@ -312,7 +293,7 @@ export default function DashboardPage() {
           setError('Could not load your scripts. Try again in a moment.');
         } else if (rows) {
           setBlueprints(
-            rows.map((row: any) => ({
+            rows.map((row: { id: string | number; idea: string; created_at: string | null; blueprint: VideoBlueprint | PlatformSpecificBlueprints | null }) => ({
               id: row.id,
               idea: row.idea,
               created_at: row.created_at ?? null,
@@ -322,11 +303,11 @@ export default function DashboardPage() {
         }
 
         setBlueprintsLoading(false);
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error('Unexpected error loading dashboard data.', err);
         if (!isMounted) return;
         setError(
-          err?.message || 'Something went wrong loading your dashboard data.'
+          err instanceof Error ? err.message : 'Something went wrong loading your dashboard data.'
         );
         setStreakLoading(false);
         setBlueprintsLoading(false);
@@ -470,10 +451,10 @@ export default function DashboardPage() {
       if (redirectError) {
         throw redirectError;
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error initiating Founder License purchase:', err);
       alert(
-        err?.message || 'Could not initiate payment. Please try again in a moment.'
+        err instanceof Error ? err.message : 'Could not initiate payment. Please try again in a moment.'
       );
       setFounderLicenseLoading(false);
     }
@@ -519,10 +500,10 @@ export default function DashboardPage() {
       setTimeout(() => {
         window.location.href = '/dashboard?success=true';
       }, 1500);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error unlocking alpha access:', err);
       setAlphaCodeError(
-        err?.message || 'Failed to unlock alpha access. Please try again.'
+        err instanceof Error ? err.message : 'Failed to unlock alpha access. Please try again.'
       );
       setAlphaCodeLoading(false);
     }
@@ -531,24 +512,31 @@ export default function DashboardPage() {
   return (
     <main className="mx-auto flex min-h-screen max-w-5xl flex-col gap-8 px-4 py-10 text-slate-50">
       <header className="space-y-3">
-        <div className="flex items-center gap-3">
-          <p className="inline-flex rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-300">
-            Octane Dashboard
-          </p>
-          {hasFounderLicense && (
-            <div className="inline-flex items-center gap-2 rounded-full border-2 border-amber-500 bg-amber-500/20 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-300">
-              <Crown className="h-3 w-3" />
-              Founder Batch
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div className="flex-1">
+            <div className="flex items-center gap-3">
+              <p className="inline-flex rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-300">
+                Octane Dashboard
+              </p>
+              {hasFounderLicense && (
+                <div className="inline-flex items-center gap-2 rounded-full border-2 border-amber-500 bg-amber-500/20 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-300">
+                  <Crown className="h-3 w-3" />
+                  Founder Batch
+                </div>
+              )}
             </div>
-          )}
+            <h1 className="text-3xl font-semibold leading-tight text-slate-50 md:text-4xl mt-3">
+              {fullName ? `${fullName}'s` : 'Your'} Scripts and Streaks
+            </h1>
+            <p className="max-w-2xl text-sm text-slate-300 mt-2">
+              Keep an eye on your posting streak and the scripts you&apos;ve already
+              shaped. Pick one and film it today.
+            </p>
+          </div>
+          <div className="w-full md:w-72 flex-shrink-0">
+            <CommandCenter />
+          </div>
         </div>
-        <h1 className="text-3xl font-semibold leading-tight text-slate-50 md:text-4xl">
-          {fullName ? `${fullName}'s` : 'Your'} Scripts and Streaks
-        </h1>
-        <p className="max-w-2xl text-sm text-slate-300">
-          Keep an eye on your posting streak and the scripts you&apos;ve already
-          shaped. Pick one and film it today.
-        </p>
       </header>
 
       {/* Community Wins Ticker */}
@@ -833,28 +821,15 @@ export default function DashboardPage() {
                 type="button"
                 onClick={async () => {
                   try {
-                    // Check for mock user first
-                    let userId: string | undefined;
-                    if (isLocalhost()) {
-                      const mockUser = getMockUser();
-                      if (mockUser) {
-                        userId = mockUser.id;
-                      }
+                    const {
+                      data: { user },
+                    } = await supabase.auth.getUser();
+                    
+                    if (!user?.id) {
+                      throw new Error('Please sign in to share your referral link.');
                     }
                     
-                    // Fall back to Supabase user if no mock user
-                    if (!userId) {
-                      const {
-                        data: { user },
-                      } = await supabase.auth.getUser();
-                      userId = user?.id;
-                    }
-                    
-                    if (!userId) {
-                      throw new Error('No user found');
-                    }
-                    
-                    const referralLink = `${typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000'}?ref=${userId}`;
+                    const referralLink = `${typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000'}?ref=${user.id}`;
                     await navigator.clipboard.writeText(referralLink);
                     setReferralCopied(true);
                     setTimeout(() => setReferralCopied(false), 3000);
@@ -961,10 +936,13 @@ export default function DashboardPage() {
         )}
 
         {!blueprintsLoading && blueprints.length === 0 && !error && (
-          <p className="text-sm text-slate-300">
-            No scripts saved yet. Visit the Lab, spin up ideas, and save a few
-            blueprints to see them here.
-          </p>
+          <>
+            <p className="text-sm text-slate-300">
+              No scripts saved yet. Visit the Lab, spin up ideas, and save a few
+              blueprints to see them here.
+            </p>
+            <DemoNudge />
+          </>
         )}
 
         {blueprints.length > 0 && (
@@ -1359,6 +1337,14 @@ export default function DashboardPage() {
         </div>
       )}
     </main>
+  );
+}
+
+export default function DashboardPage() {
+  return (
+    <Suspense fallback={<main className="flex min-h-screen items-center justify-center bg-slate-950"><div className="h-8 w-8 animate-spin rounded-full border-2 border-amber-500 border-t-transparent" /></main>}>
+      <DashboardContent />
+    </Suspense>
   );
 }
 

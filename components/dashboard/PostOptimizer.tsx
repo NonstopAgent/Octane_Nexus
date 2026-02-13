@@ -10,7 +10,7 @@ type PostOptimizerProps = {
 
 export default function PostOptimizer({ niche }: PostOptimizerProps) {
   const [image, setImage] = useState<string | null>(null);
-  const [imageBase64, setImageBase64] = useState<string | null>(null);
+  const [, setImageBase64] = useState<string | null>(null);
   const [captions, setCaptions] = useState<CaptionResult | null>(null);
   const [generating, setGenerating] = useState<boolean>(false);
   const [copied, setCopied] = useState<string | null>(null);
@@ -229,7 +229,7 @@ export default function PostOptimizer({ niche }: PostOptimizerProps) {
                 <h3 className="text-sm font-semibold text-slate-50">First Comment Suggestion</h3>
                 <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-4">
                   <p className="text-sm text-slate-200 leading-relaxed mb-2">
-                    "{captions.captions[0]}"
+                    &quot;{captions.captions[0]}&quot;
                   </p>
                   <p className="text-xs text-slate-400 italic">{captions.strategyNote}</p>
                 </div>

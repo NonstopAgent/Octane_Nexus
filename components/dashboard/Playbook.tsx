@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Flame, Sparkles, CheckCircle2, Star } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Flame, Sparkles, CheckCircle2, Star, ArrowRight } from 'lucide-react';
 import {
   getPlaybookEntries,
   getWinningHooks,
@@ -9,6 +10,43 @@ import {
   getPlaybookInsights,
   type PlaybookEntry,
 } from '@/lib/playbook';
+import { POST_LAB_PREFILL_KEY } from '@/lib/post-lab-prefill';
+
+function UseThisFormatButton({
+  hookTemplate,
+  scriptScaffold,
+  label,
+}: {
+  hookTemplate: string;
+  scriptScaffold?: string;
+  label: string;
+}) {
+  const router = useRouter();
+  const handleClick = () => {
+    try {
+      sessionStorage.setItem(
+        POST_LAB_PREFILL_KEY,
+        JSON.stringify({
+          hookTemplate: hookTemplate || '',
+          scriptScaffold: scriptScaffold ?? '',
+        })
+      );
+      router.push('/dashboard/post-lab');
+    } catch {
+      router.push('/dashboard/post-lab');
+    }
+  };
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      className="mt-2 w-full inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-600 bg-slate-800/60 px-2 py-1.5 text-[11px] font-medium text-slate-300 hover:bg-slate-700/60 hover:text-slate-100 transition"
+    >
+      <ArrowRight className="h-3 w-3" />
+      {label}
+    </button>
+  );
+}
 
 export default function Playbook() {
   const [entries, setEntries] = useState<PlaybookEntry[]>([]);
@@ -60,6 +98,10 @@ export default function Playbook() {
                 <p className="text-sm text-slate-50 leading-relaxed line-clamp-3">
                   {hook.content}
                 </p>
+                <UseThisFormatButton
+                  hookTemplate={hook.content}
+                  label="Use this hook"
+                />
               </div>
             ))}
           </div>
@@ -95,6 +137,11 @@ export default function Playbook() {
                 <p className="mt-1 text-sm text-slate-50 leading-relaxed line-clamp-4">
                   {script.content}
                 </p>
+                <UseThisFormatButton
+                  hookTemplate=""
+                  scriptScaffold={script.content}
+                  label="Use this format"
+                />
               </div>
             ))}
           </div>

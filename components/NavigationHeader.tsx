@@ -8,7 +8,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { getMockUser, isLocalhost, hasMockSession } from '@/lib/mockAuth';
 
 export function NavigationHeader() {
-  const router = useRouter();
+  useRouter();
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
 
   useEffect(() => {

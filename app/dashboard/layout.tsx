@@ -3,10 +3,10 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { UserCircle, BookOpen, BarChart3, Settings, MessageCircle, Sparkles, CalendarDays } from 'lucide-react';
+import { UserCircle, BookOpen, BarChart3, Settings, MessageCircle, Sparkles, CalendarDays, LayoutGrid, TrendingUp } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
-import { getMockUser } from '@/lib/mockAuth';
 import { getCalibrationLevel } from '@/lib/gemini';
+import CreatorDailyBar from '@/components/dashboard/CreatorDailyBar';
 
 export default function DashboardLayout({
   children,
@@ -34,15 +34,7 @@ export default function DashboardLayout({
           }
         }
 
-        // Check for mock user
-        const mockUser = getMockUser();
-        if (mockUser) {
-          setBrandVision('Building your brand authority');
-          setLoading(false);
-          return;
-        }
-
-        // Otherwise, check Supabase
+        // Check Supabase
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) {
           setLoading(false);
@@ -87,8 +79,10 @@ export default function DashboardLayout({
   const navItems = [
     { href: '/identity', label: 'Identity', icon: UserCircle, external: false },
     { href: '/dashboard/library', label: 'Library', icon: BookOpen, external: false },
+    { href: '/dashboard/trends', label: 'Trends', icon: TrendingUp, external: false },
     { href: '/dashboard/chat', label: 'Nexus Chat', icon: MessageCircle, external: false },
     { href: '/dashboard/post-lab', label: 'Post Lab', icon: Sparkles, external: false },
+    { href: '/dashboard/production', label: 'Production', icon: LayoutGrid, external: false },
     { href: '/dashboard/schedule', label: 'Schedule', icon: CalendarDays, external: false },
     { href: '/dashboard/monitoring', label: 'Monitoring', icon: BarChart3, external: false },
     { href: '/dashboard/settings', label: 'Settings', icon: Settings, external: false },
@@ -104,8 +98,14 @@ export default function DashboardLayout({
     if (href === '/dashboard/post-lab') {
       return pathname === '/dashboard/post-lab';
     }
+    if (href === '/dashboard/production') {
+      return pathname === '/dashboard/production';
+    }
     if (href === '/dashboard/schedule') {
       return pathname === '/dashboard/schedule';
+    }
+    if (href === '/dashboard/trends') {
+      return pathname === '/dashboard/trends';
     }
     if (href === '/identity') {
       return pathname?.startsWith('/identity') || false;
@@ -116,31 +116,33 @@ export default function DashboardLayout({
   return (
     <div className="flex h-screen bg-slate-950">
       {/* Sidebar */}
-      <aside className="w-64 border-r border-slate-800 bg-slate-950 flex flex-col">
+      <aside className="w-64 border-r border-slate-800/90 bg-slate-950 flex flex-col">
         {/* Logo/Brand */}
-        <div className="p-6 border-b border-slate-800">
+        <div className="p-6 border-b border-slate-800/80">
           <Link href="/" className="flex items-center gap-2">
-            <span className="text-xl font-bold text-amber-500">Octane Nexus</span>
+            <span className="text-xl font-bold tracking-tight text-amber-500">Octane Nexus</span>
           </Link>
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 p-4 space-y-2">
+        <nav className="flex-1 p-3 space-y-1">
           {navItems.map((item) => {
             const Icon = item.icon;
             const active = isActive(item.href);
             
+            const testId = item.href === '/identity' ? 'nav-identity' : item.href.replace('/dashboard/', 'nav-');
             return (
               <Link
                 key={item.href}
                 href={item.href}
-                className={`flex items-center gap-3 px-4 py-3 rounded-xl transition ${
+                data-testid={testId}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition duration-200 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2 focus:ring-offset-slate-950 border-l-2 ${
                   active
-                    ? 'bg-amber-500/10 border border-amber-500/20 text-amber-400 font-semibold'
-                    : 'text-slate-300 hover:bg-slate-900 hover:text-slate-100'
+                    ? 'bg-amber-500/15 text-amber-400 font-semibold border border-amber-500/20 border-l-amber-500'
+                    : 'border-l-transparent text-slate-300 hover:bg-slate-800/80 hover:text-slate-100'
                 }`}
               >
-                <Icon className={`h-5 w-5 ${active ? 'text-amber-400' : ''}`} />
+                <Icon className="h-5 w-5 flex-shrink-0" />
                 <span>{item.label}</span>
               </Link>
             );
@@ -148,7 +150,7 @@ export default function DashboardLayout({
         </nav>
 
         {/* Training Status */}
-        <div className="p-4 border-t border-slate-900">
+        <div className="p-4 border-t border-slate-800/80">
           <div className="inline-flex items-center gap-2 rounded-full border border-slate-800 bg-slate-900/80 px-3 py-1.5">
             <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
             <span className="text-[11px] font-medium text-slate-300">
@@ -159,9 +161,9 @@ export default function DashboardLayout({
       </aside>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden relative dashboard-bg dashboard-bg-noise">
         {/* Header */}
-        <header className="h-16 border-b border-slate-800 bg-slate-950 px-6 flex items-center justify-between">
+        <header className="relative z-10 h-16 border-b border-slate-800/90 bg-slate-950/80 backdrop-blur-sm px-6 flex items-center justify-between">
           <div className="flex items-center gap-4">
             {loading && (
               <div className="h-4 w-48 bg-slate-800 rounded animate-pulse" />
@@ -180,9 +182,14 @@ export default function DashboardLayout({
           </div>
         </header>
 
+        {/* Creator Daily Bar */}
+        <CreatorDailyBar />
+
         {/* Page Content */}
-        <main className={`flex-1 overflow-hidden ${pathname === '/dashboard/chat' ? 'p-0' : 'overflow-y-auto p-6'}`}>
-          {children}
+        <main className={`relative z-10 flex-1 overflow-hidden ${pathname === '/dashboard/chat' ? 'p-0' : 'overflow-y-auto px-6 py-6'}`}>
+          <div className={`h-full animate-fade-in ${pathname === '/dashboard/chat' ? '' : 'max-w-6xl mx-auto'}`}>
+            {children}
+          </div>
         </main>
       </div>
     </div>

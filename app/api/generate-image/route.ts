@@ -20,14 +20,14 @@ export async function POST(request: NextRequest) {
 
     // Build polished prompt based on style
     let polishedPrompt = prompt;
-    
+
     if (style === 'logo') {
-      polishedPrompt = `A high-quality professional vector logo of ${prompt}, clean design, modern aesthetic, suitable for brand identity, vector art style, high resolution, professional quality`;
+      polishedPrompt = `Minimalist vector logo symbol for ${prompt}. Strong, geometric lines. Flat design, single color (dark blue or black). White background. No text. No realistic people. Corporate, masculine, modern aesthetics.`;
     } else if (style === 'banner') {
       polishedPrompt = `A high-quality professional channel banner of ${prompt}, engaging design, modern aesthetic, suitable for social media header, wide format, high resolution, professional quality`;
     } else {
       // Default: assume logo style
-      polishedPrompt = `A high-quality professional vector logo of ${prompt}, clean design, modern aesthetic, suitable for brand identity, vector art style, high resolution, professional quality`;
+      polishedPrompt = `Minimalist vector logo symbol for ${prompt}. Strong, geometric lines. Flat design, single color (dark blue or black). White background. No text. No realistic people. Corporate, masculine, modern aesthetics.`;
     }
 
     const response = await openai.images.generate({
@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
       n: 1,
     });
 
-    // @ts-ignore
+    // @ts-expect-error - OpenAI response shape varies by version
     const imageUrl = response.data[0]?.url;
 
     if (!imageUrl) {
@@ -49,21 +49,20 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({ url: imageUrl });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.log('--- OPENAI ERROR ---');
     console.log(error);
     console.log('Key Status:', process.env.OPENAI_API_KEY ? 'Key Exists' : 'Key Missing');
     console.error('--- DETAILED ERROR ---', error);
-    
-    // Handle OpenAI API errors
-    if (error?.status === 401) {
+    const err = error as { status?: number };
+    if (err?.status === 401) {
       return NextResponse.json(
         { error: 'Invalid API key' },
         { status: 401 }
       );
     }
     
-    if (error?.status === 429) {
+    if (err?.status === 429) {
       return NextResponse.json(
         { error: 'Rate limit exceeded. Please try again later.' },
         { status: 429 }
@@ -71,7 +70,7 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json(
-      { error: error?.message || 'Failed to generate image' },
+      { error: error instanceof Error ? error.message : 'Failed to generate image' },
       { status: 500 }
     );
   }

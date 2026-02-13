@@ -1,12 +1,15 @@
 'use client';
 
-import { useEffect } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Target, Sparkles, CheckCircle2, ArrowRight, Zap } from 'lucide-react';
+import { supabase } from '@/lib/supabaseClient';
 
-export default function HomePage() {
+function HomeContent() {
   const searchParams = useSearchParams();
+  const [claimedCount, setClaimedCount] = useState<number>(88);
+  const [loadingCount, setLoadingCount] = useState<boolean>(true);
 
   // ==================== REFERRAL TRACKING ====================
   useEffect(() => {
@@ -19,6 +22,29 @@ export default function HomePage() {
       console.log('Referral tracked:', referralId);
     }
   }, [searchParams]);
+
+  // ==================== DYNAMIC CLAIMED COUNT ====================
+  useEffect(() => {
+    async function loadClaimedCount() {
+      try {
+        const { count, error } = await supabase
+          .from('profiles')
+          .select('*', { count: 'exact', head: true })
+          .eq('has_purchased_package', true);
+
+        if (!error && count !== null) {
+          setClaimedCount(count);
+        }
+      } catch (err) {
+        console.error('Failed to load claimed count:', err);
+        // Keep default value of 88 on error
+      } finally {
+        setLoadingCount(false);
+      }
+    }
+
+    loadClaimedCount();
+  }, []);
 
   return (
     <main className="mx-auto flex min-h-screen max-w-7xl flex-col gap-16 px-4 py-16 md:py-24">
@@ -44,7 +70,9 @@ export default function HomePage() {
             <span className="text-sm font-semibold uppercase tracking-wide text-amber-300">
               Limited Packages
             </span>
-            <span className="text-lg font-bold text-amber-500">88/100</span>
+            <span className="text-lg font-bold text-amber-500">
+              {loadingCount ? '...' : `${claimedCount}/100`}
+            </span>
             <span className="text-sm font-semibold text-amber-300">
               Identity Packages Claimed
             </span>
@@ -227,5 +255,13 @@ export default function HomePage() {
         </div>
       </section>
     </main>
+  );
+}
+
+export default function HomePage() {
+  return (
+    <Suspense fallback={<main className="min-h-screen bg-slate-950" />}>
+      <HomeContent />
+    </Suspense>
   );
 }

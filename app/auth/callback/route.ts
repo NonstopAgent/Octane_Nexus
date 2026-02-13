@@ -50,10 +50,11 @@ export async function GET(req: NextRequest) {
         // Redirect to the returnTo URL or dashboard
         return NextResponse.redirect(new URL(returnTo, requestUrl.origin));
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Authentication failed';
       console.error('Error in auth callback:', err);
       return NextResponse.redirect(
-        new URL(`/login?error=${encodeURIComponent(err.message || 'Authentication failed')}&returnTo=${encodeURIComponent(returnTo)}`, requestUrl.origin)
+        new URL(`/login?error=${encodeURIComponent(message)}&returnTo=${encodeURIComponent(returnTo)}`, requestUrl.origin)
       );
     }
   }

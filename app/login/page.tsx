@@ -1,13 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Loader2, Mail, Lock, Sparkles, Zap } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
-import { isLocalhost, setMockUser, createMockUser } from '@/lib/mockAuth';
+import { isLocalhost } from '@/lib/mockAuth';
 
-export default function LoginPage() {
+function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const returnTo = searchParams?.get('returnTo') || '/dashboard';
@@ -33,23 +33,34 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      // Use fixed credentials
-      const mockUser: ReturnType<typeof createMockUser> = {
-        id: 'dev_admin',
-        email: 'admin@octanenexus.com',
-        has_purchased_package: true,
-        purchased_package_type: 'vault',
-        founder_license: true,
-      };
-      
-      // Set mock cookie
-      setMockUser(mockUser);
-      
-      // Redirect immediately to Identity onboarding flow
-      router.push('/identity');
-    } catch (err: any) {
+      const demoEmail = 'demo@octanenexus.com';
+      const demoPassword = 'dev123456';
+
+      const signInResult = await supabase.auth.signInWithPassword({ email: demoEmail, password: demoPassword });
+      let authData = signInResult.data;
+
+      if (signInResult.error) {
+        const signUpResult = await supabase.auth.signUp({ email: demoEmail, password: demoPassword });
+        if (signUpResult.error) throw signUpResult.error;
+        authData = signUpResult.data as typeof signInResult.data;
+      }
+
+      if (authData?.user) {
+        await supabase.from('profiles').upsert(
+          {
+            id: authData.user.id,
+            email: authData.user.email,
+            has_purchased_package: true,
+            founder_license: true,
+          },
+          { onConflict: 'id' }
+        );
+        router.push('/identity');
+      }
+    } catch (err: unknown) {
       console.error('Mock login error:', err);
-      setError(err.message || 'Mock login failed.');
+      setError(err instanceof Error ? err.message : 'Mock login failed.');
+    } finally {
       setLoading(false);
     }
   }
@@ -91,9 +102,9 @@ export default function LoginPage() {
           router.push(safeReturnTo);
         }
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(viewSignup ? 'Signup error:' : 'Login error:', err);
-      setError(err.message || (viewSignup ? 'Failed to create account. Please try again.' : 'Failed to sign in. Please check your credentials.'));
+      setError(err instanceof Error ? err.message : (viewSignup ? 'Failed to create account. Please try again.' : 'Failed to sign in. Please check your credentials.'));
     } finally {
       setLoading(false);
     }
@@ -117,9 +128,9 @@ export default function LoginPage() {
       }
 
       setMagicLinkSent(true);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Magic link error:', err);
-      setError(err.message || 'Failed to send magic link. Please try again.');
+      setError(err instanceof Error ? err.message : 'Failed to send magic link. Please try again.');
     } finally {
       setMagicLinkLoading(false);
     }
@@ -347,5 +358,13 @@ export default function LoginPage() {
         </p>
       </div>
     </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<main className="flex min-h-screen items-center justify-center bg-slate-950"><div className="h-8 w-8 animate-spin rounded-full border-2 border-amber-500 border-t-transparent" /></main>}>
+      <LoginContent />
+    </Suspense>
   );
 }

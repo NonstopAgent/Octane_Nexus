@@ -1,0 +1,57 @@
+---
+description: Core project conventions, tech stack, and patterns for Octane Nexus
+alwaysApply: true
+---
+
+# Octane Nexus – Core Rules
+
+## Project Overview
+Octane Nexus is a high-performance creator terminal: Identity Sniper, Algorithm Lab, and Active Librarian. Built for creators to secure handles, train voice, and build content pipelines.
+
+## Tech Stack
+- **Framework**: Next.js 14 (App Router)
+- **Language**: TypeScript
+- **Styling**: Tailwind CSS
+- **Auth & DB**: Supabase (auth + PostgreSQL)
+- **Payments**: Stripe
+- **AI**: Google Gemini via `@/lib/gemini`
+- **Images**: `@/lib/image-gen` (brand assets, logos, banners)
+- **Icons**: lucide-react
+
+## File Conventions
+- Pages: `app/**/page.tsx` (App Router)
+- API routes: `app/api/**/route.ts`
+- Shared components: `components/` (dashboard components in `components/dashboard/`)
+- Lib modules: `lib/` (supabaseClient, gemini, image-gen, analytics, etc.)
+- Use `'use client'` for interactive pages; keep layout server-renderable where possible
+
+## Data & Supabase
+- **profiles** (key fields): `id`, `brand_vision`, `niche`, `vibe`, `linked_accounts` (JSON: instagram, tiktok, x, youtube), `has_purchased_package`, `purchased_package_type` (sniper|vault), `founder_license`, `streak_count`, `last_post_date`, `profile_image_url`, `channel_banner_url`, `header_image_url`, `full_name`
+- **saved_blueprints**: `id`, `user_id`, `idea`, `blueprint` (JSON), `created_at`
+- **user_content_history**: `user_id`, `content_text` (for voice-matching)
+- **blueprint_performance**: `blueprint_id`, `status` (viral|success), `marked_at`
+
+## UI Patterns
+- Dark theme: `bg-slate-950`, `border-slate-800`, `text-slate-50/300/400`
+- Accent: amber (`amber-500`, `amber-400`, `amber-500/10`)
+- Success: emerald (`emerald-500`, `emerald-500/15`)
+- Cards: `rounded-2xl` or `rounded-3xl`, `border border-slate-800`, `bg-slate-900/80`
+- Primary buttons: `rounded-full border-2 border-amber-500 bg-amber-500 text-slate-950`
+- Loading: `Loader2` from lucide-react with `animate-spin`
+
+## Authentication & Access
+- `supabase.auth.getUser()` for current user
+- `has_purchased_package` gates Identity flow; `founder_license` / `purchased_package_type === 'vault'` gates unlimited blueprints in Lab
+- Redirect unauthenticated users to `/login?returnTo=<path>`
+
+## API Routes
+- `/api/checkout` – POST, creates Stripe checkout session
+- `/api/webhooks/stripe` – Stripe webhooks (updates profiles)
+- `/api/generate-image` – image generation
+- `/api/debug-env` – env checks
+
+## Naming
+- Use `handle` for social handles (e.g. `@username`)
+- Use `blueprint` for video script objects (hook, meat, cta, setup_tip)
+- Use `vision` for brand vision text
+- Use `niche` and `vibe` for creator positioning

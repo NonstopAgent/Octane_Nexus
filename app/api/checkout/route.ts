@@ -2,12 +2,20 @@ import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { supabase } from '@/lib/supabaseClient';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  // @ts-ignore
-  apiVersion: '2024-11-20.acacia',
-});
-
 export async function POST(req: NextRequest) {
+  const stripeKey = process.env.STRIPE_SECRET_KEY;
+
+  if (!stripeKey) {
+    return new Response(
+      JSON.stringify({ error: "Stripe not configured" }),
+      { status: 501, headers: { "content-type": "application/json" } }
+    );
+  }
+
+  const stripe = new Stripe(stripeKey, {
+    apiVersion: '2023-10-16',
+  });
+
   try {
     // Get user from Supabase
     const {
@@ -97,10 +105,10 @@ export async function POST(req: NextRequest) {
     });
 
     return NextResponse.json({ sessionId: session.id });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error creating Stripe checkout session:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to create checkout session.' },
+      { error: error instanceof Error ? error.message : 'Failed to create checkout session.' },
       { status: 500 }
     );
   }

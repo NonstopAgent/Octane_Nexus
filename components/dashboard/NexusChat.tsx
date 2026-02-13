@@ -2,8 +2,8 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { MessageCircle, X, Send, Bot, FolderOpen, CheckCircle2 } from 'lucide-react';
-import { analyzeIdea, type IdeaAnalysis } from '@/lib/gemini';
-import { addPlaybookEntry } from '@/lib/playbook';
+import { type IdeaAnalysis } from '@/lib/gemini';
+import { supabase } from '@/lib/supabaseClient';
 
 type Message = {
   id: string;
@@ -12,26 +12,6 @@ type Message = {
   timestamp: Date;
   scorecard?: IdeaAnalysis;
 };
-
-function getMockResponse(userMessage: string): string {
-  const lowerMessage = userMessage.toLowerCase();
-  
-  if (lowerMessage.includes('hello') || lowerMessage.includes('hi') || lowerMessage.includes('hey')) {
-    return "Hey! Ready to optimize your content. What can I help you with today?";
-  } else if (lowerMessage.includes('idea') || lowerMessage.includes('concept')) {
-    return "Great! Ideas are the foundation. Try using the 'Brainstorm Ideas' button to generate AI-powered concepts, or dump your raw idea in the input box at the top.";
-  } else if (lowerMessage.includes('hook') || lowerMessage.includes('viral')) {
-    return `Hooks are everything! Start with curiosity gaps, controversial statements, or "before you knew this" patterns. Want me to help you craft one?`;
-  } else if (lowerMessage.includes('bio') || lowerMessage.includes('profile')) {
-    return "Your bio is your first impression. Focus on authority (credibility), relatability (connection), or mystery (intrigue). Which vibe fits your brand?";
-  } else if (lowerMessage.includes('help') || lowerMessage.includes('how')) {
-    return "I'm here to help! I can guide you on content strategy, bio optimization, hook formulas, and more. Just ask!";
-  } else if (lowerMessage.includes('script')) {
-    return "Scripts need three parts: Hook (attention), Body (value), CTA (action). Want me to break down your idea into a script structure?";
-  } else {
-    return "That's interesting! Tell me more about what you're working on. I can help with content strategy, bio writing, hook formulas, and more.";
-  }
-}
 
 // Detect "Rate this:" pattern
 function detectRatePattern(text: string): string | null {
@@ -157,16 +137,22 @@ export default function NexusChat() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [niche, setNiche] = useState<string>('content creator');
+  const [userId, setUserId] = useState<string | null>(null);
 
-  // Load niche from brand vision
+  // Load userId and niche from brand vision
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const storedVision = localStorage.getItem('brand_vision');
-      if (storedVision) {
-        const words = storedVision.split(/\s+/).slice(0, 3).join(' ');
-        setNiche(words || 'content creator');
+    async function init() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) setUserId(user.id);
+      if (typeof window !== 'undefined') {
+        const storedVision = localStorage.getItem('brand_vision');
+        if (storedVision) {
+          const words = storedVision.split(/\s+/).slice(0, 3).join(' ');
+          setNiche(words || 'content creator');
+        }
       }
     }
+    init();
   }, []);
 
   // Auto-scroll to bottom when new messages arrive
@@ -208,7 +194,14 @@ export default function NexusChat() {
     
     if (ideaToRate) {
       try {
-        const analysis = await analyzeIdea(ideaToRate, niche);
+        const res = await fetch('/api/analyze-idea', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ idea: ideaToRate, niche }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Analysis failed');
+        const analysis = data as IdeaAnalysis;
         const botResponse: Message = {
           id: (Date.now() + 1).toString(),
           text: `Here's my analysis for "${ideaToRate}":`,
@@ -228,17 +221,52 @@ export default function NexusChat() {
         setMessageList((prev) => [...prev, errorResponse]);
       }
       setIsTyping(false);
+    } else if (!userId) {
+      const errorResponse: Message = {
+        id: (Date.now() + 1).toString(),
+        text: "Please sign in to chat with Nexus.",
+        sender: 'bot',
+        timestamp: new Date()
+      };
+      setMessageList((prev) => [...prev, errorResponse]);
+      setIsTyping(false);
     } else {
-      setTimeout(() => {
+      try {
+        const messages = messageList
+          .filter((m) => !m.scorecard)
+          .map((m) => ({
+            role: (m.sender === 'user' ? 'user' : 'model') as 'user' | 'model',
+            parts: [{ text: m.text }],
+          }));
+        messages.push({ role: 'user' as const, parts: [{ text: userText }] });
+
+        const res = await fetch('/api/nexus-chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ messages, userId }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Request failed');
+
         const botResponse: Message = {
           id: (Date.now() + 1).toString(),
-          text: getMockResponse(userText),
+          text: data.reply,
           sender: 'bot',
           timestamp: new Date()
         };
         setMessageList((prev) => [...prev, botResponse]);
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : 'Something went wrong.';
+        const errorResponse: Message = {
+          id: (Date.now() + 1).toString(),
+          text: msg,
+          sender: 'bot',
+          timestamp: new Date()
+        };
+        setMessageList((prev) => [...prev, errorResponse]);
+      } finally {
         setIsTyping(false);
-      }, 1000);
+      }
     }
   }
 

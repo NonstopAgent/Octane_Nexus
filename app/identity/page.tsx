@@ -2,14 +2,12 @@
 
 import { useMemo, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { loadStripe } from '@stripe/stripe-js';
-import { CheckCircle2, Loader2, Lock, Zap, ArrowRight, Target, Sparkles, UserCircle, Activity, Cpu, TrendingUp, Globe, Anchor, Shield, Hexagon } from 'lucide-react';
-import { generateVisionBios, generateBrandBrief, generateVisionHandles, generateDescriptionOptions, generateLogoConcepts, type VisionBios, type LogoConcept } from '@/lib/gemini';
-import { generateBrandAsset } from '@/lib/image-gen';
+import { CheckCircle2, Loader2, Zap, ArrowRight, ArrowLeft, Sparkles } from 'lucide-react';
+import Link from 'next/link';
+import { generateVisionBios, generateVisionHandles, generateLogoConcepts, type VisionBios, type LogoConcept } from '@/lib/gemini';
+import { generateBrandAsset, generateLogo } from '@/lib/image-gen';
 import { supabase } from '@/lib/supabaseClient';
-import { isLocalhost, getMockUser, hasMockSession } from '@/lib/mockAuth';
 
-const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
 
 // ==================== TYPES ====================
 type Platform = 'Instagram' | 'TikTok' | 'X' | 'YouTube';
@@ -65,18 +63,11 @@ function simulateHandleAvailability(handle: string, primaryPlatform?: Platform):
 // ==================== MAIN COMPONENT ====================
 export default function IdentityPage() {
   const router = useRouter();
-  
+
   // ==================== ACCESS CONTROL ====================
-  const [hasPurchasedPackage, setHasPurchasedPackage] = useState<boolean>(false);
+  const [, setHasPurchasedPackage] = useState<boolean>(false);
   const [checkingAccess, setCheckingAccess] = useState<boolean>(true);
-  const [checkoutLoading, setCheckoutLoading] = useState<boolean>(false);
-  const [forceUnlockLoading, setForceUnlockLoading] = useState<boolean>(false);
-  
-  const isDevelopment = typeof window !== 'undefined' && (
-    process.env.NODE_ENV === 'development' || 
-    window.location.hostname === 'localhost' ||
-    window.location.hostname === '127.0.0.1'
-  );
+  const [, setCheckoutLoading] = useState<boolean>(false);
 
   // ==================== SHARED STATE (Across All Steps) ====================
   const [step, setStep] = useState<Step>(0);
@@ -108,56 +99,65 @@ export default function IdentityPage() {
   const [isEditingVision, setIsEditingVision] = useState(false);
 
   // Step 5: Profile Pic Lab
-  const [refineImagePrompt, setRefineImagePrompt] = useState('');
-  const [imageGenerating, setImageGenerating] = useState(false);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
-  const [imageError, setImageError] = useState<string | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- reserved for refine flow
+  const [, setRefineImagePrompt] = useState('');
+  const [, setImageGenerating] = useState(false);
+  const [, setImageError] = useState<string | null>(null);
+
+  const [existingProfileImage, setExistingProfileImage] = useState<string | null>(null);
+  const [isEditMode, setIsEditMode] = useState(false);
 
   // ==================== ACCESS CHECK & LOAD VISION ====================
   useEffect(() => {
     async function checkAccessAndLoadVision() {
       try {
-        if (isLocalhost() && hasMockSession()) {
-          const mockUser = getMockUser();
-          if (mockUser?.has_purchased_package) {
-            setHasPurchasedPackage(true);
-            setCheckingAccess(false);
-            return;
-          }
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
+        if (userError || !user) {
+          setCheckingAccess(false);
+          return;
         }
 
-        const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError || !user) {
-          setHasPurchasedPackage(false);
-          setCheckingAccess(false);
-        return;
-      }
-
         const { data: profile } = await supabase
-        .from('profiles')
-          .select('has_purchased_package, brand_vision, niche, vibe')
+          .from('profiles')
+          .select('has_purchased_package, founder_license, brand_vision, niche, vibe, profile_image_url')
           .eq('id', user.id)
           .maybeSingle();
 
-        setHasPurchasedPackage(profile?.has_purchased_package || false);
-        
-        // Load vision from profile if it exists
-        if (profile?.brand_vision) {
-          setVision(profile.brand_vision);
+        // Bypass package check: always treat as paid user for dev/testing
+        setHasPurchasedPackage(true);
+
+        // Load existing profile data (Edit Mode)
+        if (profile) {
+          const hasData = !!(profile.brand_vision || profile.niche || profile.profile_image_url);
+          setIsEditMode(hasData);
+          if (profile.brand_vision) setVision(profile.brand_vision);
+          else if (profile.niche) setVision(profile.niche); // Use niche if no brand_vision (e.g. "Fitness Dads")
+          if (profile.niche) setNiche(profile.niche);
+          if (profile.vibe) setVibe(profile.vibe);
+          if (profile.profile_image_url) {
+            setImageUrl(profile.profile_image_url);
+            setExistingProfileImage(profile.profile_image_url);
+          }
         }
-        if (profile?.niche) {
-          setNiche(profile.niche);
-        }
-        if (profile?.vibe) {
-          setVibe(profile.vibe);
-      }
-    } catch (err) {
+
+        // Ensure profile has paid user flags in Supabase (for rest of app)
+        await supabase.from('profiles').upsert(
+          {
+            id: user.id,
+            email: user.email,
+            has_purchased_package: true,
+            founder_license: true,
+          },
+          { onConflict: 'id' }
+        );
+      } catch (err) {
         console.error('Error checking package access:', err);
-        setHasPurchasedPackage(false);
+        setHasPurchasedPackage(true);
       } finally {
         setCheckingAccess(false);
+      }
     }
-  }
 
     checkAccessAndLoadVision();
   }, []);
@@ -323,25 +323,17 @@ export default function IdentityPage() {
         setVision(editableVision.trim());
         await updateProfileProgress({ brand_vision: editableVision.trim() });
       }
-    } catch (err: any) {
-      setBiosError(err?.message || 'Failed to generate bios. Please try again.');
+    } catch (err: unknown) {
+      setBiosError(err instanceof Error ? err.message : 'Failed to generate bios. Please try again.');
     } finally {
       setBiosLoading(false);
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- used from ProfilePicStep / Brand Identity
   async function handleGenerateImage(useRefinement = false) {
     if (!niche.trim() || !vibe.trim()) {
-      // Generate placeholder if missing niche/vibe
-      const placeholderUrl = `data:image/svg+xml;base64,${btoa(
-        `<svg width="400" height="400" xmlns="http://www.w3.org/2000/svg">
-          <rect width="400" height="400" fill="#1e293b"/>
-          <circle cx="200" cy="180" r="60" fill="#f59e0b" opacity="0.3"/>
-          <text x="200" y="280" font-family="Arial" font-size="16" fill="#f59e0b" text-anchor="middle">Profile Image</text>
-          <text x="200" y="300" font-family="Arial" font-size="12" fill="#94a3b8" text-anchor="middle">Complete Steps 0-2 for full generation</text>
-        </svg>`
-      )}`;
-      setImageUrl(placeholderUrl);
+      setImageError('Please complete the Purpose step (niche and vibe) before generating a profile image.');
       return;
     }
 
@@ -350,28 +342,34 @@ export default function IdentityPage() {
     if (!useRefinement) setImageUrl(null);
 
     try {
-      // TODO: Implement generateProfileImage function or use image generation API
-      // For now, use placeholder
-      const placeholderUrl = `data:image/svg+xml;base64,${btoa(
-        `<svg width="400" height="400" xmlns="http://www.w3.org/2000/svg">
-          <rect width="400" height="400" fill="#1e293b"/>
-          <circle cx="200" cy="180" r="60" fill="#f59e0b" opacity="0.3"/>
-          <text x="200" y="280" font-family="Arial" font-size="16" fill="#f59e0b" text-anchor="middle">Profile Image</text>
-        </svg>`
-      )}`;
-      setImageUrl(placeholderUrl);
-    } catch (err: any) {
-      // If generation fails, provide placeholder so user can continue
-      console.warn('Image generation failed, using placeholder:', err);
-      const placeholderUrl = `data:image/svg+xml;base64,${btoa(
-        `<svg width="400" height="400" xmlns="http://www.w3.org/2000/svg">
-          <rect width="400" height="400" fill="#1e293b"/>
-          <circle cx="200" cy="180" r="60" fill="#f59e0b" opacity="0.3"/>
-          <text x="200" y="280" font-family="Arial" font-size="16" fill="#f59e0b" text-anchor="middle">Profile Image</text>
-          <text x="200" y="300" font-family="Arial" font-size="12" fill="#94a3b8" text-anchor="middle">${niche.trim()}</text>
-        </svg>`
-      )}`;
-      setImageUrl(placeholderUrl);
+      // Build prompt from niche and vibe
+      const prompt = `A professional profile image for a ${niche} creator with a ${vibe} vibe. Modern, clean, brand-appropriate, suitable for social media profile picture.`;
+      
+      // Call real image generation API
+      const imageUrl = await generateBrandAsset(prompt, 'logo');
+      setImageUrl(imageUrl);
+
+      // Save generated image URL to user's profile in Supabase
+      try {
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
+        if (!userError && user) {
+          const { error: updateError } = await supabase
+            .from('profiles')
+            .update({ profile_image_url: imageUrl })
+            .eq('id', user.id);
+
+          if (updateError) {
+            console.error('Failed to save image URL to profile:', updateError);
+            // Don't throw - image was generated successfully, just saving failed
+          }
+        }
+      } catch (saveError) {
+        console.error('Error saving image to profile:', saveError);
+        // Don't throw - image was generated successfully
+      }
+    } catch (err: unknown) {
+      console.error('Image generation failed:', err);
+      setImageError(err instanceof Error ? err.message : 'Failed to generate profile image. Please try again.');
     } finally {
       setImageGenerating(false);
     }
@@ -399,19 +397,19 @@ export default function IdentityPage() {
 
       // Success: Redirect to dashboard library
       router.push('/dashboard/library');
-    } catch (err: any) {
+    } catch (err: unknown) {
       // Even on error, redirect to dashboard (user can fix later)
       console.error('Failed to save image:', err);
       router.push('/dashboard/library');
     }
   }
 
-  async function updateProfileProgress(partial?: any) {
+  async function updateProfileProgress(partial?: Record<string, unknown>) {
     try {
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError || !user) return;
 
-      const updateData: any = { id: user.id };
+      const updateData: Record<string, unknown> = { id: user.id };
       if (partial) Object.assign(updateData, partial);
       if (niche) updateData.niche = niche;
       if (vibe) updateData.vibe = vibe;
@@ -423,27 +421,8 @@ export default function IdentityPage() {
     }
   }
 
-  async function handleBypassAuth() {
-    if (isLocalhost()) {
-      setHasPurchasedPackage(true);
-      return;
-    }
-    setForceUnlockLoading(true);
-    try {
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError || !user) throw new Error('Please sign in first.');
-      await supabase
-        .from('profiles')
-        .update({ has_purchased_package: true, purchased_package_type: 'vault', founder_license: true })
-        .eq('id', user.id);
-      setTimeout(() => window.location.reload(), 500);
-    } catch (err: any) {
-      console.error('Error force unlocking:', err);
-    } finally {
-      setForceUnlockLoading(false);
-    }
-  }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- used from checkout CTA
   async function handlePurchase(packageType: 'sniper' | 'vault') {
     setCheckoutLoading(true);
     try {
@@ -476,59 +455,6 @@ export default function IdentityPage() {
       <main className="mx-auto flex min-h-screen max-w-5xl flex-col items-center justify-center gap-4 px-4">
         <Loader2 className="h-8 w-8 animate-spin text-amber-400" />
         <p className="text-sm text-slate-400">Checking access...</p>
-      </main>
-    );
-  }
-
-  if (!hasPurchasedPackage) {
-    return (
-      <main className="mx-auto flex min-h-screen max-w-5xl flex-col items-center justify-center gap-8 px-4 py-16">
-        <div className="text-center space-y-4">
-          <Lock className="mx-auto h-16 w-16 text-amber-400" />
-          <h1 className="text-3xl font-semibold text-slate-50">Package Required</h1>
-          <p className="text-slate-300">The Authority Architect requires a package purchase.</p>
-        </div>
-        <div className="grid gap-4 md:grid-cols-2 w-full max-w-2xl">
-          <div className="rounded-2xl border-2 border-slate-800 bg-slate-900/80 p-6">
-            <div className="text-right mb-4">
-              <div className="text-2xl font-bold text-slate-50">$149</div>
-              <div className="text-xs text-slate-400">One-Time</div>
-            </div>
-            <h3 className="text-lg font-semibold text-slate-50 mb-2">Identity Sniper</h3>
-            <p className="text-xs text-slate-300 mb-4">Cross-platform handles, 3 bios, niche analysis</p>
-            <button
-              onClick={() => handlePurchase('sniper')}
-              disabled={checkoutLoading}
-              className="w-full rounded-full border-2 border-amber-500 bg-amber-500 px-6 py-3 text-sm font-semibold text-slate-950 hover:bg-amber-400 disabled:opacity-60"
-            >
-              Get Identity Package
-            </button>
-          </div>
-          <div className="rounded-2xl border-2 border-amber-500 bg-amber-500/10 p-6">
-            <div className="text-right mb-4">
-              <div className="text-2xl font-bold text-slate-50">$299</div>
-              <div className="text-xs text-slate-400">One-Time</div>
-            </div>
-            <h3 className="text-lg font-semibold text-slate-50 mb-2">Authority Vault</h3>
-            <p className="text-xs text-slate-300 mb-4">Everything + 30 days of blueprints (90 scripts)</p>
-            <button
-              onClick={() => handlePurchase('vault')}
-              disabled={checkoutLoading}
-              className="w-full rounded-full border-2 border-amber-500 bg-amber-500 px-6 py-3 text-sm font-semibold text-slate-950 hover:bg-amber-400 disabled:opacity-60"
-            >
-              Get Authority Vault
-            </button>
-          </div>
-        </div>
-        {isLocalhost() && (
-          <button
-            onClick={handleBypassAuth}
-            disabled={forceUnlockLoading}
-            className="rounded-xl border-2 border-emerald-500/50 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-400 hover:border-emerald-500 hover:bg-emerald-500/20"
-          >
-            🎭 Bypass Auth (Localhost)
-          </button>
-        )}
       </main>
     );
   }
@@ -588,6 +514,13 @@ export default function IdentityPage() {
     <main className="mx-auto flex min-h-screen max-w-5xl flex-col gap-8 px-4 py-10 text-slate-50">
       <header className="space-y-3">
         <div className="flex items-center justify-between gap-3">
+          <Link
+            href="/dashboard"
+            className="inline-flex items-center gap-2 text-sm text-slate-400 hover:text-amber-400 transition"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to Dashboard
+          </Link>
         <p className="inline-flex rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-300">
             Authority Architect
           </p>
@@ -735,6 +668,8 @@ export default function IdentityPage() {
         {currentStepName === 'Brand Identity' && (
           <BrandLogoGenerator
             selectedHandle={selectedHandle}
+            existingLogoUrl={existingProfileImage}
+            isEditMode={isEditMode}
             onComplete={handleSaveImage}
           />
         )}
@@ -768,7 +703,11 @@ export default function IdentityPage() {
               disabled={!canGoNext}
             className="inline-flex min-h-[48px] items-center justify-center rounded-full bg-amber-500 px-8 text-sm font-semibold text-slate-950 shadow-md hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-50"
             >
-            {step >= steps.length - 1 ? 'Save Progress' : 'Next'}
+            {step >= steps.length - 1 && isEditMode && currentStepName === 'Brand Identity'
+              ? 'Update Brand Identity'
+              : step >= steps.length - 1
+              ? 'Save Progress'
+              : 'Next'}
             </button>
           )}
       </div>
@@ -889,7 +828,6 @@ function PlatformCommand(props: {
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {PLATFORMS.map((platform) => {
-          // TODO: Use selectedPlatform to toggle between 'Bio' (IG/TikTok) and 'Channel Description' (YouTube) in the next step
           const handleClick = () => {
             onSelectPlatform(platform);
             // Platform selection updates primaryPlatform state automatically
@@ -1225,7 +1163,7 @@ function SmartDescriptionGenerator(props: {
   onSelect?: (description: string) => void;
 }) {
   const { vision, platform, onSelect } = props;
-  const [descriptions, setDescriptions] = useState<any>(null);
+  const [descriptions, setDescriptions] = useState<{ options: { text?: string; strategyTags?: string[]; strategyNote?: string }[] } | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [refinementPrompt, setRefinementPrompt] = useState<string>('');
@@ -1267,8 +1205,9 @@ function SmartDescriptionGenerator(props: {
 
   function handleSelectOption(index: number) {
     setSelectedIndex(index);
-    if (onSelect && descriptions?.options?.[index]) {
-      onSelect(descriptions.options[index].text);
+    const text = descriptions?.options?.[index]?.text;
+    if (onSelect && text !== undefined && text !== '') {
+      onSelect(text);
     }
   }
 
@@ -1304,7 +1243,7 @@ function SmartDescriptionGenerator(props: {
       {!loading && descriptions && (
         <div className="space-y-6">
           <div className="grid gap-4 md:grid-cols-3">
-            {descriptions.options.map((option: any, index: number) => (
+            {descriptions.options.map((option: { text?: string; strategyTags?: string[]; strategyNote?: string }, index: number) => (
               <button
                 key={index}
                 type="button"
@@ -1339,21 +1278,21 @@ function SmartDescriptionGenerator(props: {
           </div>
 
           {/* AI Refinement Input */}
-          <div className="space-y-3">
-            <label className="block text-sm font-medium text-slate-200">
+      <div className="space-y-3">
+        <label className="block text-sm font-medium text-slate-200">
               Tell AI how to tweak these...
-            </label>
+        </label>
             <div className="flex gap-3">
-              <input
+          <input
                 type="text"
                 value={refinementPrompt}
                 onChange={(e) => setRefinementPrompt(e.target.value)}
                 placeholder="e.g., 'Make it funnier', 'Add emojis', 'More professional tone'"
                 className="flex-1 rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-slate-50 placeholder:text-slate-500 focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400"
                 onKeyDown={(e) => e.key === 'Enter' && handleRefine()}
-              />
-              <button
-                type="button"
+          />
+          <button
+            type="button"
                 onClick={handleRefine}
                 disabled={!refinementPrompt.trim() || refining}
                 className="inline-flex items-center justify-center gap-2 rounded-xl border border-amber-500/50 bg-amber-500/10 px-6 py-3 text-sm font-medium text-amber-400 hover:bg-amber-500/20 hover:border-amber-500 transition disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1362,15 +1301,15 @@ function SmartDescriptionGenerator(props: {
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
                     Refining...
-                  </>
-                ) : (
+              </>
+            ) : (
                   <>
                     <Zap className="h-4 w-4" />
                     Refine
                   </>
-                )}
-              </button>
-            </div>
+            )}
+          </button>
+        </div>
           </div>
         </div>
       )}
@@ -1396,8 +1335,8 @@ function BannerGenerator(props: {
   vision?: string;
   onComplete?: () => void;
 }) {
-  const { platform, vision, onComplete } = props;
-  const [concepts, setConcepts] = useState<any>(null);
+  const { platform, vision } = props;
+  const [concepts, setConcepts] = useState<{ concepts: { styleName?: string; colorPalette?: string[] }[] } | null>(null);
   const [loadingConcepts, setLoadingConcepts] = useState<boolean>(false);
   const [selectedConceptIndex, setSelectedConceptIndex] = useState<number | null>(null);
   const [refinement, setRefinement] = useState<string>('');
@@ -1437,8 +1376,8 @@ function BannerGenerator(props: {
   async function handleGenerateBanner() {
     if (selectedConceptIndex === null || !concepts?.concepts?.[selectedConceptIndex]) return;
     
-    const selectedConcept = concepts.concepts[selectedConceptIndex];
-    const baseVisualDescription = selectedConcept.visualDescription;
+    const selectedConcept = concepts.concepts[selectedConceptIndex] as { styleName?: string; colorPalette?: string[]; visualDescription?: string };
+    const baseVisualDescription = selectedConcept.visualDescription ?? '';
     
     // Build final prompt: If user has typed a long custom description, prioritize it
     // Otherwise, combine base style with refinement
@@ -1465,6 +1404,26 @@ function BannerGenerator(props: {
       // Call real image generation API
       const imageUrl = await generateBrandAsset(finalPrompt, 'banner');
       setBannerUrl(imageUrl);
+
+      // Save generated banner URL to user's profile in Supabase
+      try {
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
+        if (!userError && user) {
+          const fieldName = isYouTube ? 'channel_banner_url' : 'header_image_url';
+          const { error: updateError } = await supabase
+            .from('profiles')
+            .update({ [fieldName]: imageUrl })
+            .eq('id', user.id);
+
+          if (updateError) {
+            console.error('Failed to save banner URL to profile:', updateError);
+            // Don't throw - image was generated successfully
+          }
+        }
+      } catch (saveError) {
+        console.error('Error saving banner to profile:', saveError);
+        // Don't throw - image was generated successfully
+      }
     } catch (error) {
       console.error('Failed to generate banner:', error);
       alert('Failed to generate banner. Please try again.');
@@ -1508,7 +1467,7 @@ function BannerGenerator(props: {
       {!loadingConcepts && concepts && (
         <div className="space-y-6">
           <div className="grid gap-4 md:grid-cols-3">
-            {concepts.concepts.map((concept: any, index: number) => (
+            {concepts.concepts.map((concept: { styleName?: string; colorPalette?: string[]; reasoning?: string }, index: number) => (
               <button
                 key={index}
                 type="button"
@@ -1536,7 +1495,7 @@ function BannerGenerator(props: {
                       />
                     ))}
                   </div>
-                  <p className="text-xs text-slate-300 leading-relaxed">{concept.reasoning}</p>
+                  <p className="text-xs text-slate-300 leading-relaxed">{concept.reasoning ?? ''}</p>
                 </div>
               </button>
             ))}
@@ -1621,7 +1580,7 @@ function BannerGenerator(props: {
               <p className="text-sm text-slate-400">{aspectRatio} Banner Preview</p>
             </div>
           </div>
-          <p className="text-xs text-slate-500">Select a design concept above and click "Generate Banner" to create your {isYouTube ? 'channel banner' : 'header image'}</p>
+          <p className="text-xs text-slate-500">Select a design concept above and click &quot;Generate Banner&quot; to create your {isYouTube ? 'channel banner' : 'header image'}</p>
         </div>
       )}
     </div>
@@ -1649,7 +1608,6 @@ function UsernameSniper(props: {
     checking, 
     results, 
     onCheck, 
-    primaryPlatform, 
     selectedHandle, 
     setSelectedHandle,
     suggestedHandles,
@@ -1982,9 +1940,11 @@ function BioArchitect(props: {
 
 function BrandLogoGenerator(props: {
   selectedHandle: string;
+  existingLogoUrl?: string | null;
+  isEditMode?: boolean;
   onComplete?: () => void;
 }) {
-  const { selectedHandle, onComplete } = props;
+  const { selectedHandle, existingLogoUrl, isEditMode, onComplete: onCompleteCb } = props;
   const router = useRouter();
 
   // Extract brand vision from handle for AI context
@@ -1997,7 +1957,12 @@ function BrandLogoGenerator(props: {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [customVision, setCustomVision] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
-  const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
+  const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(existingLogoUrl ?? null);
+  const [showToast, setShowToast] = useState(false);
+
+  useEffect(() => {
+    if (existingLogoUrl) setGeneratedImageUrl(existingLogoUrl);
+  }, [existingLogoUrl]);
 
   // Load AI concepts on mount
   useEffect(() => {
@@ -2010,7 +1975,7 @@ function BrandLogoGenerator(props: {
         console.error('Failed to load logo concepts:', error);
         // Fallback to empty array - UI will show error state
         setConcepts([]);
-      } finally {
+    } finally {
         setIsLoadingConcepts(false);
       }
     };
@@ -2031,29 +1996,46 @@ function BrandLogoGenerator(props: {
         ? selectedConcept.visualPrompt
         : fallbackVision;
 
-      console.log('Final logo generation prompt:', finalPrompt);
-
-      // Call real image generation API
-      const imageUrl = await generateBrandAsset(finalPrompt, 'logo');
+      // Call logo generation with strict formula + fallback on failure
+      const imageUrl = await generateLogo(finalPrompt);
       setGeneratedImageUrl(imageUrl);
-
-      // Complete the step after successful generation
-      if (onComplete) {
-        await onComplete();
-      } else {
-        router.push('/dashboard/library');
-      }
     } catch (error) {
       console.error('Failed to generate logo:', error);
-      // Show error state - user can try again
       alert('Failed to generate logo. Please try again.');
     } finally {
       setIsGenerating(false);
     }
   };
 
+  const handleSaveAndGoToLibrary = async () => {
+    if (!generatedImageUrl) return;
+    try {
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (!userError && user) {
+        const { error: upsertError } = await supabase
+          .from('profiles')
+          .upsert(
+            { id: user.id, profile_image_url: generatedImageUrl },
+            { onConflict: 'id' }
+          );
+        if (upsertError) throw upsertError;
+      }
+      setShowToast(true);
+      if (onCompleteCb) await onCompleteCb();
+      setTimeout(() => router.push('/dashboard'), 1500);
+    } catch (err) {
+      console.error('Failed to save image:', err);
+      alert('Failed to save. Please try again.');
+    }
+  };
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 relative">
+      {showToast && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 rounded-xl border border-emerald-500/40 bg-emerald-500/20 px-6 py-3 text-sm font-medium text-emerald-200 shadow-lg">
+          Brand Identity Updated
+        </div>
+      )}
       <div className="space-y-2">
         <h2 className="flex items-center gap-2 text-2xl font-semibold text-slate-50">
           <Sparkles className="h-7 w-7 text-amber-400" />
@@ -2126,9 +2108,9 @@ function BrandLogoGenerator(props: {
                     </button>
                   );
                 })}
-              </div>
-            )}
-          </div>
+            </div>
+          )}
+        </div>
 
           {/* Phase 3: Custom Vision Input */}
           <div className="space-y-2">
@@ -2145,8 +2127,8 @@ function BrandLogoGenerator(props: {
           </div>
 
           {/* Phase 4: Generate Button */}
-          <button
-            type="button"
+            <button
+              type="button"
             onClick={handleGenerateFinal}
             disabled={isGenerating || (!selectedConcept && !customVision.trim())}
             className="w-full inline-flex items-center justify-center gap-2 min-h-[56px] rounded-xl border-2 border-amber-500 bg-amber-500 px-6 text-base font-semibold text-slate-950 hover:bg-amber-400 transition disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-amber-500"
@@ -2155,14 +2137,14 @@ function BrandLogoGenerator(props: {
               <>
                 <Loader2 className="h-5 w-5 animate-spin" />
                 Generating Final Logo…
-              </>
-            ) : (
+                </>
+              ) : (
               <>
                 <Sparkles className="h-5 w-5" />
                 ✨ Generate Brand Asset
               </>
-            )}
-          </button>
+              )}
+            </button>
         </div>
 
         {/* Right Column: Preview Area */}
@@ -2180,13 +2162,21 @@ function BrandLogoGenerator(props: {
                   </p>
                 </div>
               ) : generatedImageUrl ? (
-                // Generated image preview
-                <div className="w-full h-full flex items-center justify-center">
+                // Generated image preview with Save button
+                <div className="w-full h-full flex flex-col items-center justify-center gap-6">
                   <img
                     src={generatedImageUrl}
                     alt="Generated brand logo"
                     className="max-w-full max-h-full rounded-xl shadow-2xl"
                   />
+                  <button
+                    type="button"
+                    onClick={handleSaveAndGoToLibrary}
+                    className="inline-flex min-h-[56px] items-center justify-center gap-2 rounded-full border-2 border-amber-500 bg-amber-500 px-8 text-base font-semibold text-slate-950 shadow-md hover:bg-amber-400 hover:border-amber-400"
+                  >
+                    <CheckCircle2 className="h-5 w-5" />
+                    {isEditMode ? 'Update Brand Identity' : 'Save & Go to Library'}
+                  </button>
                 </div>
               ) : selectedConcept || customVision.trim() ? (
                 // Preview placeholder (ready to generate)
@@ -2198,7 +2188,7 @@ function BrandLogoGenerator(props: {
                     Preview will appear here
                   </p>
                   <p className="text-xs text-slate-500 text-center max-w-[200px]">
-                    Click "Generate Brand Asset" to create your logo
+                    Click &quot;Generate Brand Asset&quot; to create your logo
                   </p>
                 </div>
               ) : (

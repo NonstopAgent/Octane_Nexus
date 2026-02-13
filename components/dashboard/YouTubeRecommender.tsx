@@ -1,16 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Play, ExternalLink, Loader2, ArrowRight } from 'lucide-react';
-import { generateVideoInspiration } from '@/lib/gemini';
+import { Play, ArrowRight } from 'lucide-react';
+import { generateVideoInspiration, type VideoInspirationItem } from '@/lib/gemini';
 import ScrollableRow from '@/components/ui/ScrollableRow';
-
-type VideoInspiration = {
-  title: string;
-  channelName: string;
-  views: string;
-  thumbnailColor: string;
-};
 
 type YouTubeVideo = {
   id: string;
@@ -50,7 +43,7 @@ export default function YouTubeRecommender({ niche }: YouTubeRecommenderProps) {
       setError(null);
 
       try {
-        const inspiration = await generateVideoInspiration(currentNiche);
+        const inspiration: VideoInspirationItem[] = await generateVideoInspiration(currentNiche);
         
         // Convert Gemini response to component format
         const formattedVideos: YouTubeVideo[] = inspiration.map((item, index) => {
@@ -73,7 +66,7 @@ export default function YouTubeRecommender({ niche }: YouTubeRecommenderProps) {
         });
 
         setVideos(formattedVideos);
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error('Failed to load video inspiration:', err);
         setError('Failed to load video recommendations');
       } finally {
