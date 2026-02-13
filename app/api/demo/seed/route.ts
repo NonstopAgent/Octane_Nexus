@@ -24,6 +24,24 @@ export async function POST() {
     const now = new Date().toISOString();
     const nextWeekIso = getNextWeekIso();
 
+    // 0) Idempotent: remove any existing demo data first
+    await supabase.from('content_posts').delete().eq('user_id', userId).like('title', '[DEMO]%');
+    await supabase.from('saved_blueprints').delete().eq('user_id', userId).like('idea', '[DEMO]%');
+    // Clean tracked IDs
+    const { data: tracked } = await supabase.from('demo_seeded_ids').select('table_name, record_id').eq('user_id', userId);
+    if (tracked && tracked.length > 0) {
+      const byTable = new Map<string, string[]>();
+      for (const row of tracked) {
+        const list = byTable.get(row.table_name) ?? [];
+        list.push(row.record_id);
+        byTable.set(row.table_name, list);
+      }
+      for (const [tbl, ids] of byTable) {
+        await supabase.from(tbl).delete().in('id', ids);
+      }
+      await supabase.from('demo_seeded_ids').delete().eq('user_id', userId);
+    }
+
     // 1) content_posts (tagged with [DEMO] in title)
     const contentRows = buildDemoContentPosts(userId, now, nextWeekIso);
     const { data: insertedPosts, error: postsErr } = await supabase

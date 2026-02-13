@@ -198,7 +198,7 @@ export default function KanbanBoard({ userId, refreshTrigger }: KanbanBoardProps
                 {(post.status === POST_STATUS.READY || post.status === POST_STATUS.FILMING) && (
                   <button
                     type="button"
-                    data-testid="schedule-post-action"
+                    data-testid="schedule-post-btn"
                     onClick={(e) => {
                       e.stopPropagation();
                       setSchedulePost(post);

@@ -28,7 +28,7 @@ export async function schedulePost(params: SchedulePostParams): Promise<{ error?
   }
 
   if (!isValidScheduledDate(scheduledDate)) {
-    return { error: 'Please pick a date/time.' };
+    return { error: 'Please pick a date' };
   }
 
   const scheduledIso = new Date(scheduledDate!).toISOString();
