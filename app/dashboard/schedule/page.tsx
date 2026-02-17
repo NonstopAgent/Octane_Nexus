@@ -219,6 +219,7 @@ export default function SchedulePage() {
       if (!user) throw new Error('Not authenticated');
 
       const now = new Date().toISOString();
+      const todayDate = new Date().toDateString();
 
       // 1) Move content_posts → posted
       if (item.source === 'content_posts') {
@@ -249,16 +250,57 @@ export default function SchedulePage() {
         updated_at: now,
       });
       if (igErr) {
-        // Log but don't block - table or RLS may prevent insert
         console.warn('instagram_posts insert failed (non-blocking):', igErr.message);
       }
 
-      // 3) Update local state
+      // 3) Update streak + XP on profiles
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('streak_count, last_post_date, xp')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      const prevStreak = typeof profile?.streak_count === 'number' ? profile.streak_count : 0;
+      const prevXp = typeof profile?.xp === 'number' ? profile.xp : 0;
+      const lastPostDate = profile?.last_post_date ? new Date(profile.last_post_date as string) : null;
+
+      let newStreak: number;
+      if (lastPostDate && lastPostDate.toDateString() === todayDate) {
+        // Already posted today — don't change streak
+        newStreak = prevStreak;
+      } else if (lastPostDate) {
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        if (lastPostDate.toDateString() === yesterday.toDateString()) {
+          // Last post was yesterday — extend streak
+          newStreak = prevStreak + 1;
+        } else {
+          // Gap — reset streak to 1
+          newStreak = 1;
+        }
+      } else {
+        // First post ever
+        newStreak = 1;
+      }
+
+      await supabase
+        .from('profiles')
+        .update({
+          streak_count: newStreak,
+          last_post_date: now,
+          xp: prevXp + 25,
+        })
+        .eq('id', user.id);
+
+      // 4) Update local state
       setItems((prev) =>
         prev.map((i) => (i.id === item.id ? { ...i, status: 'posted' as const } : i))
       );
       setSelectedItem(null);
-      toast.success('Marked as posted!');
+      toast.success(`Posted! Streak: ${newStreak}d 🔥 +25 XP`);
+
+      // Trigger CreatorDailyBar refresh
+      window.dispatchEvent(new Event('creator-daily-refresh'));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed to mark as posted');
     } finally {

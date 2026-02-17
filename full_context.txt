@@ -1,27 +1,31 @@
 # Octane Nexus — Full Context
 
-**Last updated:** February 13, 2026
+**Last updated:** February 12, 2026
+
+---
 
 ## Project Overview
 
 Octane Nexus is a Next.js 14 creator terminal: a "calm engine for social growth" with a full content pipeline from idea to posted content, AI-powered tools, brand identity, and social monitoring.
 
-**Core Pipeline:** Idea → Scripting → Filming → Ready → Scheduled → Posted
+**Core pipeline:** Idea → Scripting → Filming → Ready → Scheduled → Posted
+
+**Product pillars:** Identity Sniper (Authority Architect), Algorithm Lab (blueprints), Active Librarian (saved content + playbooks).
 
 ---
 
 ## Tech Stack
 
 - **Framework:** Next.js 14 (App Router), TypeScript
-- **Styling:** Tailwind CSS (dark theme: slate-950/amber-500 accent)
+- **Styling:** Tailwind CSS (dark theme: slate-950, amber-500 accent, emerald success)
 - **Auth & DB:** Supabase (auth, PostgreSQL, storage)
 - **Payments:** Stripe (checkout, webhooks)
-- **AI:** Google Gemini (`@google/generative-ai`), OpenAI (DALL-E image gen)
+- **AI:** Google Gemini (`@google/generative-ai` via `@/lib/gemini`), OpenAI (DALL-E via `@/lib/image-gen`)
 - **Media:** fluent-ffmpeg (overlay burn-in), sharp (image rendering), Pexels (stock video)
 - **Charts:** Recharts
-- **Toasts:** Sonner
+- **Toasts:** Sonner (`@/components/Toaster`)
 - **Icons:** Lucide React
-- **Testing:** Playwright
+- **Testing:** Playwright (smoke, explorer, mvp-loop)
 
 ---
 
@@ -29,149 +33,126 @@ Octane Nexus is a Next.js 14 creator terminal: a "calm engine for social growth"
 
 ```
 app/
-  page.tsx                    # Landing page
-  layout.tsx                  # Root layout (NavigationHeader, ActiveLibrarian, Toaster)
-  login/page.tsx              # Auth login
+  layout.tsx                  # Root: NavigationHeader, ActiveLibrarian, Toaster, globals.css
+  page.tsx                    # Landing
+  login/page.tsx
   auth/callback/route.ts      # Supabase auth callback
-  identity/page.tsx           # Identity Sniper wizard (Authority Architect)
-  lab/page.tsx                # Algorithm Lab (blueprint generation)
-  library/page.tsx            # Active Librarian (saved blueprints, client)
-  nexus/page.tsx              # Nexus community page
+  identity/page.tsx           # Identity Sniper (Authority Architect) wizard
+  lab/page.tsx                # Algorithm Lab
+  library/page.tsx            # Active Librarian (public)
+  nexus/page.tsx
   trends/page.tsx             # Standalone trends
 
   dashboard/
-    layout.tsx                # Sidebar nav + header + CreatorDailyBar + dashboard-bg
+    layout.tsx                # Sidebar nav, header (brand vision), CreatorDailyBar, dashboard-bg
     page.tsx                  # Home: streaks, blueprints, CommandCenter, founder license
-    chat/page.tsx             # Nexus Chat (context-aware, ?prompt= prefill)
-    library/page.tsx          # Library (server component: tools, tactics, playbook, videos)
-    monitoring/page.tsx       # Social monitoring (follower charts, account switcher)
-    post-lab/page.tsx         # Post Lab (video preview, caption, hashtags, schedule)
-    production/page.tsx       # Production Kanban board + simulation
-    production/actions.ts     # Server actions: runOneHourSimulation
-    schedule/page.tsx         # Calendar + scheduled items + Mark as Posted
-    settings/page.tsx         # General/Integrations/Billing/Developer/Demo tabs
-    trends/page.tsx           # Niche Surveillance (trending videos)
-    instagram/page.tsx        # Instagram-specific tools
+    chat/page.tsx             # Nexus Chat (?prompt= prefill)
+    library/page.tsx          # Library: tools, tactics, playbook, videos
+    monitoring/page.tsx       # Follower charts, account switcher, Record Snapshot
+    post-lab/page.tsx         # Video preview, caption, hashtags, schedule
+    production/page.tsx       # Kanban + simulation
+    production/actions.ts     # runOneHourSimulation
+    schedule/page.tsx         # Calendar, scheduled items, Mark as Posted
+    settings/page.tsx         # General / Integrations / Billing / Developer / Demo
+    trends/page.tsx           # Niche Surveillance
+    instagram/page.tsx        # Instagram tools
     health/page.tsx           # System health
 
   api/
     checkout/route.ts         # POST: Stripe checkout session
-    webhooks/stripe/route.ts  # Stripe webhooks (update profiles on payment)
-    generate-image/route.ts   # DALL-E image gen (logos, banners)
-    generate-script/route.ts  # Gemini script generation
-    generate-ideas/route.ts   # Content idea generation
-    generate-video-asset/     # Video asset gen (Pexels/OpenAI backgrounds)
-    analyze-idea/route.ts     # Idea viral scoring
-    analyze-visual/route.ts   # Visual content analysis
-    nexus-chat/route.ts       # Chat API (Gemini conversation)
-    intelligence/context/     # GET: niche, bestFormat, bestPostingHours, strategicFlags
-    creator/today/route.ts    # GET: pipeline counts, nextBestAction, streak
-    instagram/posts/route.ts  # GET/POST Instagram posts
-    instagram/score/route.ts  # Quality scoring
-    instagram/caption/route.ts# Caption generation
-    production/idea/route.ts  # Create production idea
-    demo/seed/route.ts        # POST: seed demo data for current user
-    demo/reset/route.ts       # POST: reset demo data for current user
-    download-image/route.ts   # Image download proxy
-    debug-env/route.ts        # Env debug (dev)
-    health-check/route.ts     # Health check
-    system-health/route.ts    # System health status
+    webhooks/stripe/route.ts  # Stripe webhooks → profiles
+    generate-image/route.ts   # DALL-E (logos, banners)
+    generate-script/route.ts
+    generate-ideas/route.ts
+    generate-video-asset/     # Pexels/OpenAI backgrounds
+    analyze-idea/route.ts
+    analyze-visual/route.ts
+    nexus-chat/route.ts       # Gemini conversation
+    intelligence/context/route.ts  # GET: niche, bestFormat, bestPostingHours, strategicFlags (uses cookies → dynamic)
+    creator/today/route.ts    # GET: pipeline counts, nextBestAction, streak, xp, hasPostedToday (uses cookies → dynamic)
+    instagram/posts/route.ts  # GET/POST
+    instagram/score/route.ts
+    instagram/caption/route.ts
+    production/idea/route.ts
+    demo/seed/route.ts        # POST: idempotent demo seed
+    demo/reset/route.ts       # POST: reset demo data
+    download-image/route.ts
+    debug-env/route.ts
+    health-check/route.ts
+    system-health/route.ts
 
 actions/
-  schedule-post.ts            # Schedule a post (update content_posts)
-  render-post.ts              # Render/finalize video (calls finalizeVideoById)
-  create-version.ts           # Create new version of a post
-  generate-metadata.ts        # Generate caption/hashtags metadata
-  seed-data.ts                # Legacy seed (Production board only)
+  schedule-post.ts            # Schedule post (content_posts); validation "Please pick a date"
+  render-post.ts              # finalizeVideoById
+  create-version.ts
+  generate-metadata.ts
+  seed-data.ts                # Legacy (Production board only)
 
 components/
-  ActiveLibrarian.tsx         # Global librarian component
-  NavigationHeader.tsx        # Top nav
-  Toaster.tsx                 # Toast wrapper
-
+  ActiveLibrarian.tsx
+  NavigationHeader.tsx
+  Toaster.tsx
   dashboard/
-    CommandCenter.tsx          # XP/command widget
-    CreatorDailyBar.tsx        # Persistent daily bar: nextBestAction, pipeline chips, Ask Nexus
-    DashboardPageHeader.tsx    # Unified page header (title, subtitle, icon, actions)
-    IdeaCard.tsx               # Idea display card
-    IdeaLab.tsx                # Idea brainstorming lab
-    KanbanBoard.tsx            # Production Kanban (columns, Schedule button on READY)
-    LibraryClientSection.tsx   # Brainstorm + Script It (client interactive)
-    NexusChat.tsx              # Chat interface component
-    Playbook.tsx               # Playbook component
-    PostOptimizer.tsx          # Post optimization
-    RealityCheck.tsx           # Reality check component
-    ScheduleModal.tsx          # Schedule modal (date/time/platform, validation)
-    ScriptEditorModal.tsx      # Script editor (Hook/Meat/CTA, generate assets, versioning)
-    ScriptWizard.tsx           # Script wizard
-    TacticsGrid.tsx            # Viral playbooks grid
-    ToolCard.tsx               # Creator tool card
-    YouTubeRecommender.tsx     # YouTube recommendations
-
+    CommandCenter.tsx
+    CreatorDailyBar.tsx       # Persistent bar: nextBestAction, pipeline chips, Ask Nexus, streak/XP
+    DashboardPageHeader.tsx
+    IdeaCard.tsx
+    IdeaLab.tsx
+    KanbanBoard.tsx           # data-testid: production-column-*, production-card, schedule-post-btn
+    LibraryClientSection.tsx
+    NexusChat.tsx
+    Playbook.tsx
+    PostOptimizer.tsx
+    RealityCheck.tsx
+    ScheduleModal.tsx         # schedule-modal, schedule-date-input, schedule-confirm-btn, schedule-validation-error
+    ScriptEditorModal.tsx
+    ScriptWizard.tsx
+    TacticsGrid.tsx
+    ToolCard.tsx
+    YouTubeRecommender.tsx
   ui/
-    DemoNudge.tsx              # "Load Demo Data" callout (NEXT_PUBLIC_DEMO_MODE only)
-    EmptyState.tsx             # Premium empty state with icon, title, actions
-    ScrollableRow.tsx          # Horizontal scrollable row
-    SectionHeader.tsx          # Section title + subtitle + action
-    SkeletonCard.tsx           # Loading skeleton
-    StatusChip.tsx             # Status pill (live/syncing/analyzing/beta/draft/scheduled)
+    DemoNudge.tsx
+    EmptyState.tsx
+    ScrollableRow.tsx
+    SectionHeader.tsx
+    SkeletonCard.tsx
+    StatusChip.tsx
 
 lib/
-  supabaseClient.ts           # Browser Supabase client
-  supabaseServer.ts           # Server Supabase client + service role client
-  gemini.ts                   # Gemini AI: scripts, bios, captions, chat system prompt, calibration
-  image-gen.ts                # DALL-E image generation (logos, banners, brand assets)
-  status.ts                   # POST_STATUS constants + PostStatus type
-  simulator.ts                # Ghost employee simulation
-  video-engine.ts             # Background selection, topic classification
-  versioning.ts               # Post versioning system
-  demo-seed.ts                # Deterministic demo data builders (Mulberry32 RNG)
-  analytics.ts                # Analytics utilities
-  social-intelligence.ts      # Social stats, viral tactics
-  handle-checker.ts           # Handle availability checker
-  youtube.ts                  # YouTube API integration
-  playbook.ts                 # Playbook data
-  trends.ts                   # Trends utilities
-  creators.ts                 # Creator utilities
-  post-lab-prefill.ts         # Post Lab prefill from Library
-  reality-check-storage.ts    # Reality check local storage
-  mockAuth.ts                 # Mock auth for dev/testing
-  utils.ts                    # cn() utility (clsx + tailwind-merge)
+  supabaseClient.ts
+  supabaseServer.ts            # createServerSupabaseClient (cookies)
+  gemini.ts
+  image-gen.ts
+  status.ts                   # POST_STATUS, PostStatus, POST_LAB_STATUSES
+  simulator.ts
+  video-engine.ts
+  versioning.ts
+  demo-seed.ts                # Mulberry32 RNG, buildDemoContentPosts, buildDemoSavedBlueprints, etc.
+  analytics.ts
+  social-intelligence.ts
+  handle-checker.ts
+  youtube.ts
+  playbook.ts
+  trends.ts
+  creators.ts
+  post-lab-prefill.ts
+  reality-check-storage.ts
+  mockAuth.ts
+  utils.ts                    # cn()
+  instagram/                  # index, types, constants, caption, quality, analytics, intelligence
+  intelligence/               # context, profile, patterns, coach, orchestrator, chat, validation
+  scoring/universal.ts
+  storage/                    # upload-image, upload-video
+  render/                     # burn-overlay, quote-card
 
-  instagram/
-    index.ts                  # Exports
-    types.ts                  # Instagram types
-    constants.ts              # Media/status/goal constants
-    caption.ts                # Caption generation
-    quality.ts                # Quality scoring
-    analytics.ts              # Analytics
-    intelligence.ts           # Prediction intelligence
+middleware.ts                 # Supabase session refresh; matcher excludes _next/static, _next/image, favicon, images
 
-  intelligence/
-    context.ts                # Growth context calculation
-    profile.ts                # NexusUserProfile type
-    patterns.ts               # HistoricalPostData, pattern detection
-    coach.ts                  # Coaching intelligence
-    orchestrator.ts           # buildNexusIntelligence
-    chat.ts                   # Chat intelligence
-    validation.ts             # Validation
-
-  scoring/
-    universal.ts              # Universal scoring system
-
-  storage/
-    upload-image.ts           # Image upload to Supabase
-    upload-video.ts           # Video upload to Supabase
-
-  render/
-    burn-overlay.ts           # FFmpeg overlay burn-in
-    quote-card.ts             # Quote card image rendering
-
-supabase/migrations/          # 13 migration files (see DB Schema below)
+supabase/migrations/          # 14 migrations (see DB Schema)
 tests/
-  smoke-test.spec.ts          # Full audit journey
-  explorer.spec.ts            # Autonomous explorer (random clicks + invariants)
-  utils/explorer.ts           # Explorer test utilities
+  smoke-test.spec.ts
+  explorer.spec.ts            # schedule-post-btn, "Please pick a date", New version created
+  mvp-loop.spec.ts            # seed → schedule → mark posted → creator/today + intelligence/context
+  utils/explorer.ts
 ```
 
 ---
@@ -179,28 +160,36 @@ tests/
 ## Status Constants (lib/status.ts)
 
 ```ts
-POST_STATUS = { IDEA, SCRIPTING, FILMING, READY, POSTED, SCHEDULED, GENERATING }
-POST_LAB_STATUSES = [FILMING, READY]
+POST_STATUS = {
+  IDEA: 'idea',
+  SCRIPTING: 'scripting',
+  FILMING: 'filming',
+  READY: 'ready',
+  POSTED: 'posted',
+  SCHEDULED: 'scheduled',
+  GENERATING: 'generating',
+};
+POST_LAB_STATUSES = [FILMING, READY];
 ```
 
 ---
 
 ## Database Schema (Supabase)
 
-### profiles (via Supabase auth)
-- id, email, brand_vision, niche, vibe, full_name
-- linked_accounts (JSON: instagram, tiktok, x, youtube)
-- has_purchased_package, purchased_package_type, founder_license
-- streak_count, last_post_date, credits
+### profiles
+- **id**, email, full_name, brand_vision, niche, vibe
+- **linked_accounts** (JSON: instagram, tiktok, x, youtube)
+- **has_purchased_package**, purchased_package_type, founder_license
+- **streak_count** (int), **last_post_date** (timestamptz), **xp** (int, default 0) — used for Creator Daily Bar and Mark as Posted
 - profile_image_url, channel_banner_url, header_image_url
+- **xp** added by migration `20250220000000_profiles_xp.sql`
 
 ### content_posts
-- id (UUID), user_id, title, script_content (JSONB: hook/meat/cta)
+- id, user_id, title, script_content (JSONB: hook, meat, cta)
 - status (idea|scripting|filming|ready|posted|scheduled|generating)
 - audio_url, background_video_url, background_reason, final_video_url, overlay_image_url
 - caption, hashtags (TEXT[]), scheduled_date (TIMESTAMPTZ), platform
-- version, parent_post_id
-- created_at, updated_at
+- version, parent_post_id, created_at, updated_at
 
 ### saved_blueprints
 - id, user_id, idea, blueprint (JSONB), created_at
@@ -226,63 +215,97 @@ POST_LAB_STATUSES = [FILMING, READY]
 - metrics (JSONB), content_post_id, created_at, updated_at
 
 ### demo_seeded_ids
-- user_id, table_name, record_id (tracks demo data for safe reset)
+- user_id, table_name, record_id — tracks demo rows for profile_analytics_history and instagram_posts (no [DEMO] tag) so reset can delete by ID.
 
-### Storage Buckets
-- **videos**: MP4s (rendered, burned), public, 100MB
+### Storage buckets
+- **videos**: MP4s, public, 100MB
 - **assets**: audio/video assets, public, 50MB
 - **content_uploads**: user uploads, public, 2GB
+
+### Migrations (order)
+- 20250208000000_create_profile_analytics_history.sql
+- 20250208100000_content_calendar_and_storage.sql
+- 20250209000000_content_posts.sql
+- 20250210000000_video_factory.sql
+- 20250211000000_creator_tools.sql
+- 20250212000000_post_lab.sql
+- 20250213000000_background_reason.sql
+- 20250214000000_content_posts_schema_reconcile.sql
+- 20250215000000_videos_bucket.sql
+- 20250216000000_overlay_image_url.sql
+- 20250217000000_content_posts_versioning.sql
+- 20250218000000_instagram_posts.sql
+- 20250219000000_demo_seeded_ids.sql
+- 20250220000000_profiles_xp.sql
 
 ---
 
 ## Key Flows
 
-### Content Pipeline (Production → Schedule → Posted)
-1. Ideas created in Dashboard/IdeaLab or from Trends
-2. Script edited in ScriptEditorModal (Hook/Meat/CTA sections)
-3. Generate Assets button → Pexels background + AI audio → status READY
-4. READY cards show "Schedule" button → ScheduleModal (date/time/platform)
-5. Scheduled posts appear on Schedule calendar
-6. Click scheduled item → "Mark as Posted" → updates content_posts status + inserts instagram_posts row
-7. Posted data flows into /api/intelligence/context for Nexus Chat
+### Content pipeline (Production → Schedule → Posted)
+1. Ideas from Dashboard/IdeaLab or Trends.
+2. Script in ScriptEditorModal (Hook/Meat/CTA) → Generate Assets → status READY.
+3. READY card → "Schedule" (data-testid schedule-post-btn) → ScheduleModal (date/time/platform). Validation: "Please pick a date" if no date (schedule-post.ts).
+4. Scheduled posts on Schedule page calendar.
+5. Click scheduled item → detail modal (data-testid schedule-detail-modal) → "Mark as Posted" (data-testid mark-posted-btn).
+6. **Mark as Posted** (schedule/page.tsx): updates content_posts.status = 'posted'; inserts instagram_posts row (posted_at = now); updates **profiles**: streak_count, last_post_date, xp += 25; dispatches **creator-daily-refresh** so CreatorDailyBar refetches.
+7. Intelligence context and Nexus Chat use instagram_posts / profiles.
 
-### Identity Sniper (Authority Architect)
-- Multi-step wizard: Platform → Purpose → Setup Guide → Handle Sniper → Bio → Description → Profile Pic → Banner → Brand Identity
-- Generates handles, bios, descriptions, profile images, banners via Gemini + DALL-E
-- Saves to profiles table
+### Streak & XP (Mark as Posted)
+- **Timezone-safe:** Uses `toDateString()` for "today" vs "yesterday" (local date).
+- **Streak:** If last_post_date is today → streak unchanged. If last_post_date was yesterday → streak += 1. Else → streak = 1. First post ever → streak = 1.
+- **XP:** +25 per post. Toast: "Posted! Streak: Nd 🔥 +25 XP".
 
 ### Creator Daily Bar
-- Persistent bar on all /dashboard routes (mounted in layout.tsx)
-- Fetches GET /api/creator/today on mount
-- Shows: nextBestAction guidance + pipeline count chips + "Ask Nexus" + primary CTA
-- Actions: film | finish_script | turn_idea_into_script | grab_trend
-- "Ask Nexus" links to /dashboard/chat?prompt=... (chat page reads ?prompt= and prefills input)
+- **Mount:** Dashboard layout; fetches GET /api/creator/today on load.
+- **Refresh:** Listens for `window` event **creator-daily-refresh** (fired after Mark as Posted) and refetches.
+- **Payload (CreatorTodayPayload):** ideasCount, scriptingCount, readyCount, scheduledCount, lastPostAt, streakCount, xp, hasPostedToday, nextBestAction.
+- **nextBestAction priority:** If hasPostedToday → review_performance; else if readyCount > 0 → film; else if scriptingCount > 0 → finish_script; else if ideasCount > 0 → turn_idea_into_script; else grab_trend.
+- **Actions (ACTION_MAP):** review_performance → Monitoring; film → Post Lab; finish_script / turn_idea_into_script → Production; grab_trend → Trends. Each has label, guidance, href, chatPrompt, Icon.
+- **UI:** Pipeline count chips (Ideas, Scripting, Ready, Scheduled), streak chip, XP chip (violet), primary CTA, "Ask Nexus" link to /dashboard/chat?prompt=...
 
-### Demo Mode (NEXT_PUBLIC_DEMO_MODE=true)
-- Settings → Demo Data tab: "Load Demo Data" / "Reset Demo Data" buttons
-- POST /api/demo/seed: seeds content_posts (11), saved_blueprints (6), profile_analytics_history (14d), instagram_posts (5), linked_accounts
-- POST /api/demo/reset: deletes [DEMO]-prefixed rows + tracked IDs from demo_seeded_ids
-- DemoNudge component shown on empty pages (Dashboard, Production, Post Lab, Monitoring, Library)
+### Identity Sniper (Authority Architect)
+- Multi-step: Platform → Purpose → Setup → Handle Sniper → Bio → Description → Profile Pic → Banner → Brand Identity. Saves to profiles.
 
-### Render Flow (finalizeVideoById)
-1. Fetch post, verify status FILMING
-2. Pick background via pickBackgroundForPost (or use existing)
-3. Generate overlay PNG (renderQuoteCardImage) → upload to overlays/
-4. If ffmpeg enabled: burnOverlayIntoVideo → upload burned MP4
-5. Else: upload raw background MP4
-6. Update post: status=READY, final_video_url, overlay_image_url
+### Demo mode (NEXT_PUBLIC_DEMO_MODE=true)
+- Settings → Demo tab: "Load Demo Data" / "Reset Demo Data".
+- **POST /api/demo/seed:** Idempotent: deletes existing [DEMO] content_posts/saved_blueprints and tracked demo_seeded_ids rows, then inserts content_posts (titles [DEMO]…), saved_blueprints ([DEMO] idea), profile_analytics_history (tracked), instagram_posts (tracked), linked_accounts @demo_user. Uses lib/demo-seed (Mulberry32 seed 42).
+- **POST /api/demo/reset:** Deletes [DEMO] content_posts/saved_blueprints; deletes by demo_seeded_ids for profile_analytics_history and instagram_posts; clears demo_seeded_ids; removes linked_accounts.instagram if @demo_user.
+- DemoNudge on empty Dashboard, Production, Post Lab, Monitoring, Library.
 
-### Monitoring
-- Connected accounts from profiles.linked_accounts
-- Follower chart from profile_analytics_history
-- Stats from fetchSocialStats (lib/social-intelligence.ts)
-- Record Snapshot button inserts into profile_analytics_history
+### Render (finalizeVideoById)
+- Fetch post (FILMING); pick background (pickBackgroundForPost or existing); render overlay (renderQuoteCardImage) → upload; ffmpeg burn or raw MP4 upload; update post READY, final_video_url, overlay_image_url.
 
-### Intelligence Context (/api/intelligence/context)
-- Reads profiles (niche, brand_vision)
-- Reads instagram_posts (quality_score, posted_at)
-- Computes: bestFormat, bestPostingHours, strongestPlatform, strategicFlags
-- Used by Nexus Chat context strip
+### Intelligence context (GET /api/intelligence/context)
+- Profile niche/brand_vision; instagram_posts (quality_score, posted_at); buildNexusIntelligence → bestFormat, bestPostingHours, strongestPlatform, strategicFlags. Used by Nexus Chat. Dynamic (cookies).
+
+---
+
+## API Reference (summary)
+
+| Route | Method | Purpose |
+|-------|--------|--------|
+| /api/checkout | POST | Stripe checkout session |
+| /api/webhooks/stripe | POST | Stripe webhooks, update profiles |
+| /api/generate-image | POST | DALL-E image |
+| /api/generate-script | POST | Gemini script |
+| /api/generate-ideas | POST | Idea generation |
+| /api/generate-video-asset | POST | Pexels/OpenAI video asset |
+| /api/analyze-idea | POST | Viral scoring |
+| /api/analyze-visual | POST | Visual analysis |
+| /api/nexus-chat | POST | Gemini chat |
+| /api/intelligence/context | GET | Niche, bestFormat, bestPostingHours, strategicFlags (dynamic) |
+| /api/creator/today | GET | Pipeline counts, nextBestAction, streak, xp, hasPostedToday (dynamic) |
+| /api/instagram/posts | GET/POST | Instagram posts |
+| /api/instagram/score | POST | Quality score |
+| /api/instagram/caption | POST | Caption |
+| /api/production/idea | POST | Create production idea |
+| /api/demo/seed | POST | Idempotent demo seed |
+| /api/demo/reset | POST | Reset demo data |
+| /api/download-image | GET | Image download proxy |
+| /api/debug-env | GET | Env debug |
+| /api/health-check | GET | Health |
+| /api/system-health | GET | System health |
 
 ---
 
@@ -290,72 +313,64 @@ POST_LAB_STATUSES = [FILMING, READY]
 
 ### Theme
 - Dark: bg-slate-950, border-slate-800, text-slate-50/300/400
-- Accent: amber-500, amber-400 (gold)
+- Accent: amber-500, amber-400
 - Success: emerald-500
-- Cards: dashboard-card (gradient + hover), section-frame (top glow line)
-- Background: dashboard-bg (radial vignette) + dashboard-bg-noise (CSS noise)
+- Cards: dashboard-card (gradient + hover), dashboard-card-flat, section-frame (inset top glow)
+- Background: dashboard-bg (radial vignette), dashboard-bg-noise (CSS noise)
 
-### Components
-- DashboardPageHeader: title, subtitle, icon, actions — used on all 8+ dashboard pages
-- StatusChip: pill with optional pulse dot (live/syncing/analyzing/beta/draft/scheduled)
-- EmptyState: section-frame container, icon, title, description, primary/secondary actions
-- CreatorDailyBar: persistent guidance bar with pipeline chips and action buttons
-- ScheduleModal: date/time/platform picker with validation
-- DemoNudge: compact "Load Demo Data" callout (NEXT_PUBLIC_DEMO_MODE only)
+### Key components
+- **DashboardPageHeader:** title, subtitle, icon, actions — used across dashboard pages
+- **StatusChip:** pill (live/syncing/analyzing/beta/draft/scheduled)
+- **EmptyState:** section-frame, icon, title, description, primary/secondary actions
+- **CreatorDailyBar:** guidance bar, pipeline chips, streak/XP, Ask Nexus, primary CTA
+- **ScheduleModal:** date/time/platform; data-testid for modal, date input, confirm btn, validation error
+- **DemoNudge:** "Load Demo Data" (NEXT_PUBLIC_DEMO_MODE only)
 
-### CSS Classes (globals.css @layer components)
-- .dashboard-card — gradient card with hover border/shadow
-- .dashboard-card-flat — gradient card without hover
-- .section-frame — rounded container with inset top glow line
-- .section-title — text-lg font-semibold tracking-tight
-- .body-bright — text-slate-200
-- .btn-primary-amber — amber button with focus/active states
-- .dashboard-bg — radial vignette background
-- .dashboard-bg-noise::before — CSS noise texture
+### globals.css (@layer components)
+- .dashboard-card, .dashboard-card-flat, .section-frame
+- .section-title, .body-bright
+- .btn-primary-amber
+- .dashboard-bg (radial gradients), .dashboard-bg-noise::before (SVG noise)
 
-### Animations (tailwind.config.ts)
-- fade-in: fadeIn 0.25s ease-out
-- status-pulse: statusPulse 1.5s ease-in-out infinite (opacity + scale)
+### Animations (tailwind)
+- fade-in, status-pulse
 
 ---
 
 ## Environment Variables
 
-### Public (NEXT_PUBLIC_*)
-- NEXT_PUBLIC_SUPABASE_URL
-- NEXT_PUBLIC_SUPABASE_ANON_KEY
-- NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
-- NEXT_PUBLIC_GEMINI_API_KEY (or GEMINI_API_KEY)
-- NEXT_PUBLIC_DEMO_MODE (boolean: enables demo data panel + DemoNudge)
+**Public (NEXT_PUBLIC_*):** NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY, NEXT_PUBLIC_GEMINI_API_KEY (or GEMINI_API_KEY), NEXT_PUBLIC_DEMO_MODE
 
-### Server-only
-- SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_SERVICE_ROLE)
-- STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET
-- OPENAI_API_KEY (DALL-E)
-- PEXELS_API_KEY
-- YOUTUBE_API_KEY
-- ENABLE_FFMPEG_RENDER (optional: enables ffmpeg overlay burn-in)
+**Server:** SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_SERVICE_ROLE), STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, OPENAI_API_KEY, PEXELS_API_KEY, YOUTUBE_API_KEY, ENABLE_FFMPEG_RENDER (optional)
 
 ---
 
 ## Tests
 
 ### smoke-test.spec.ts
-- Full audit journey: login → navigate all dashboard tabs → verify no crashes
+- Full audit: login → all dashboard tabs → no crashes
 
 ### explorer.spec.ts
-- Autonomous explorer: random clicks across core routes
-- Invariants tested:
-  - Schedule button with no date → "Please pick a date" + count unchanged
-  - Regenerate on READY → "New version created" + count >= before
+- Random exploration; invariants: schedule with no date → "Please pick a date"; regenerate on READY → "New version created". Uses schedule-post-btn, schedule-modal, schedule-confirm-btn, schedule-validation-error.
+
+### mvp-loop.spec.ts
+- Login (mock or real) → reset + seed demo via API → Production → schedule READY post (validation then valid date) → Schedule page → click scheduled item → Mark as Posted → GET /api/intelligence/context (200, niche) → GET /api/creator/today (nextBestAction, hasPostedToday, xp, streakCount; if posted: hasPostedToday true, streakCount >= 1, xp >= 25, nextBestAction review_performance).
 
 ---
 
 ## Verification
 
 ```bash
-npm run build          # Must pass (exit 0)
+npm run build          # Must pass
 npx tsc --noEmit       # Must pass
-npm run lint           # Warnings only, no errors
-npx playwright test    # Smoke + explorer tests
+npm run lint           # Warnings ok, no errors
+npx playwright test    # smoke, explorer, mvp-loop
 ```
+
+---
+
+## Data-testid Reference (for E2E)
+
+- **Production:** production-column-idea | scripting | filming | ready | scheduled | posted, production-card, schedule-post-btn
+- **Schedule modal:** schedule-modal, schedule-date-input, schedule-confirm-btn, schedule-validation-error
+- **Schedule detail:** schedule-detail-modal, mark-posted-btn

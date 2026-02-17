@@ -133,9 +133,6 @@ test('MVP Loop: seed → schedule → post → context', async ({ page, request 
       if (await markPostedBtn.isVisible().catch(() => false)) {
         await markPostedBtn.click();
         await page.waitForTimeout(2000);
-
-        // Modal should close or show "Posted" state
-        // The item status should now be "posted"
       }
     }
   }
@@ -148,11 +145,22 @@ test('MVP Loop: seed → schedule → post → context', async ({ page, request 
   const contextData = await contextRes.json();
   expect(contextData).toHaveProperty('niche');
 
-  // 12) Verify creator/today still works
+  // 12) Verify creator/today returns updated streak + hasPostedToday
   const todayRes = await request.get('/api/creator/today', {
     headers: { Cookie: cookieHeader },
   });
   expect(todayRes.status()).toBe(200);
   const todayData = await todayRes.json();
   expect(todayData).toHaveProperty('nextBestAction');
+  expect(todayData).toHaveProperty('hasPostedToday');
+  expect(todayData).toHaveProperty('xp');
+  expect(todayData).toHaveProperty('streakCount');
+
+  // If we successfully marked a post, streak should be >= 1 and hasPostedToday true
+  if (scheduledCount > 0) {
+    expect(todayData.hasPostedToday).toBe(true);
+    expect(todayData.streakCount).toBeGreaterThanOrEqual(1);
+    expect(todayData.xp).toBeGreaterThanOrEqual(25);
+    expect(todayData.nextBestAction).toBe('review_performance');
+  }
 });

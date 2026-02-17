@@ -5,7 +5,8 @@ export type NextBestAction =
   | 'film'
   | 'finish_script'
   | 'turn_idea_into_script'
-  | 'grab_trend';
+  | 'grab_trend'
+  | 'review_performance';
 
 export type CreatorTodayPayload = {
   ideasCount: number;
@@ -14,6 +15,8 @@ export type CreatorTodayPayload = {
   scheduledCount: number;
   lastPostAt: string | null;
   streakCount: number;
+  xp: number;
+  hasPostedToday: boolean;
   nextBestAction: NextBestAction;
 };
 
@@ -56,7 +59,7 @@ export async function GET() {
           .eq('status', 'scheduled'),
         supabase
           .from('profiles')
-          .select('streak_count')
+          .select('streak_count, last_post_date, xp')
           .eq('id', userId)
           .maybeSingle(),
         supabase
@@ -76,13 +79,23 @@ export async function GET() {
       typeof profileRes.data?.streak_count === 'number'
         ? profileRes.data.streak_count
         : 0;
+    const xp = typeof profileRes.data?.xp === 'number' ? profileRes.data.xp : 0;
     const lastPostAt =
       lastPostRes.data && lastPostRes.data.length > 0
         ? (lastPostRes.data[0].posted_at as string)
         : null;
 
+    // Determine if creator posted today
+    const todayDate = new Date().toDateString();
+    const lastPostDate = profileRes.data?.last_post_date
+      ? new Date(profileRes.data.last_post_date as string)
+      : null;
+    const hasPostedToday = lastPostDate !== null && lastPostDate.toDateString() === todayDate;
+
     let nextBestAction: NextBestAction;
-    if (readyCount > 0) {
+    if (hasPostedToday) {
+      nextBestAction = 'review_performance';
+    } else if (readyCount > 0) {
       nextBestAction = 'film';
     } else if (scriptingCount > 0) {
       nextBestAction = 'finish_script';
@@ -99,6 +112,8 @@ export async function GET() {
       scheduledCount,
       lastPostAt,
       streakCount,
+      xp,
+      hasPostedToday,
       nextBestAction,
     };
 
