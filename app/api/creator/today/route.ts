@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server';
-import { createServerSupabaseClient } from '@/lib/supabaseServer';
+import { NextRequest, NextResponse } from 'next/server';
+import { createServerSupabaseClient, createServiceRoleClient } from '@/lib/supabaseServer';
+import { getEffectiveUserIdFromRequest } from '@/lib/authServer';
 
 export type NextBestAction =
   | 'film'
@@ -20,49 +21,49 @@ export type CreatorTodayPayload = {
   nextBestAction: NextBestAction;
 };
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     const supabase = await createServerSupabaseClient();
     const {
       data: { user },
-      error: authErr,
     } = await supabase.auth.getUser();
+    const userId = getEffectiveUserIdFromRequest(req, user?.id ?? null);
 
-    if (authErr || !user) {
+    if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const userId = user.id;
+    const db = user?.id === userId ? supabase : createServiceRoleClient();
 
     // Parallel queries for speed
     const [ideasRes, scriptingRes, readyRes, scheduledRes, profileRes, lastPostRes] =
       await Promise.all([
-        supabase
+        db
           .from('content_posts')
           .select('*', { count: 'exact', head: true })
           .eq('user_id', userId)
           .eq('status', 'idea'),
-        supabase
+        db
           .from('content_posts')
           .select('*', { count: 'exact', head: true })
           .eq('user_id', userId)
           .eq('status', 'scripting'),
-        supabase
+        db
           .from('content_posts')
           .select('*', { count: 'exact', head: true })
           .eq('user_id', userId)
           .in('status', ['ready', 'filming']),
-        supabase
+        db
           .from('content_posts')
           .select('*', { count: 'exact', head: true })
           .eq('user_id', userId)
           .eq('status', 'scheduled'),
-        supabase
+        db
           .from('profiles')
           .select('streak_count, last_post_date, xp')
           .eq('id', userId)
           .maybeSingle(),
-        supabase
+        db
           .from('instagram_posts')
           .select('posted_at')
           .eq('user_id', userId)

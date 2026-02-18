@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server';
-import { createServerSupabaseClient } from '@/lib/supabaseServer';
+import { NextRequest, NextResponse } from 'next/server';
+import { createServerSupabaseClient, createServiceRoleClient } from '@/lib/supabaseServer';
+import { getEffectiveUserIdFromRequest } from '@/lib/authServer';
 import {
   buildDemoContentPosts,
   buildDemoSavedBlueprints,
@@ -8,27 +9,28 @@ import {
   getNextWeekIso,
 } from '@/lib/demo-seed';
 
-export async function POST() {
+export async function POST(req: NextRequest) {
   try {
     const supabase = await createServerSupabaseClient();
     const {
       data: { user },
-      error: authError,
     } = await supabase.auth.getUser();
+    const userId = getEffectiveUserIdFromRequest(req, user?.id ?? null);
 
-    if (authError || !user) {
+    if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const userId = user.id;
+    const useServiceRole = !user;
+    const db = useServiceRole ? createServiceRoleClient() : supabase;
     const now = new Date().toISOString();
     const nextWeekIso = getNextWeekIso();
 
     // 0) Idempotent: remove any existing demo data first
-    await supabase.from('content_posts').delete().eq('user_id', userId).like('title', '[DEMO]%');
-    await supabase.from('saved_blueprints').delete().eq('user_id', userId).like('idea', '[DEMO]%');
+    await db.from('content_posts').delete().eq('user_id', userId).like('title', '[DEMO]%');
+    await db.from('saved_blueprints').delete().eq('user_id', userId).like('idea', '[DEMO]%');
     // Clean tracked IDs
-    const { data: tracked } = await supabase.from('demo_seeded_ids').select('table_name, record_id').eq('user_id', userId);
+    const { data: tracked } = await db.from('demo_seeded_ids').select('table_name, record_id').eq('user_id', userId);
     if (tracked && tracked.length > 0) {
       const byTable = new Map<string, string[]>();
       for (const row of tracked) {
@@ -37,14 +39,14 @@ export async function POST() {
         byTable.set(row.table_name, list);
       }
       for (const [tbl, ids] of byTable) {
-        await supabase.from(tbl).delete().in('id', ids);
+        await db.from(tbl).delete().in('id', ids);
       }
-      await supabase.from('demo_seeded_ids').delete().eq('user_id', userId);
+      await db.from('demo_seeded_ids').delete().eq('user_id', userId);
     }
 
     // 1) content_posts (tagged with [DEMO] in title)
     const contentRows = buildDemoContentPosts(userId, now, nextWeekIso);
-    const { data: insertedPosts, error: postsErr } = await supabase
+    const { data: insertedPosts, error: postsErr } = await db
       .from('content_posts')
       .insert(contentRows)
       .select('id');
@@ -55,7 +57,7 @@ export async function POST() {
 
     // 2) saved_blueprints (tagged with [DEMO] in idea) – table may not exist in all projects
     const blueprintRows = buildDemoSavedBlueprints(userId, now);
-    const { error: blueprintsErr } = await supabase.from('saved_blueprints').insert(blueprintRows);
+    const { error: blueprintsErr } = await db.from('saved_blueprints').insert(blueprintRows);
     if (blueprintsErr) {
       // Log but don't fail – table might be missing
       console.warn('Demo seed: saved_blueprints insert failed (table may not exist):', blueprintsErr.message);
@@ -63,7 +65,7 @@ export async function POST() {
 
     // 3) profile_analytics_history – track IDs for reset
     const historyRows = buildDemoProfileAnalyticsHistory(userId);
-    const { data: insertedHistory, error: historyErr } = await supabase
+    const { data: insertedHistory, error: historyErr } = await db
       .from('profile_analytics_history')
       .insert(historyRows)
       .select('id');
@@ -74,7 +76,7 @@ export async function POST() {
 
     const historyIds = (insertedHistory ?? []).map((r) => r.id);
     if (historyIds.length > 0) {
-      const { error: trackHistoryErr } = await supabase.from('demo_seeded_ids').insert(
+      const { error: trackHistoryErr } = await db.from('demo_seeded_ids').insert(
         historyIds.map((record_id) => ({
           user_id: userId,
           table_name: 'profile_analytics_history',
@@ -88,13 +90,13 @@ export async function POST() {
 
     // 4) instagram_posts – for /api/intelligence/context (quality_score, posted_at); track IDs
     const igRows = buildDemoInstagramPosts(userId);
-    const { data: insertedIg, error: igErr } = await supabase
+    const { data: insertedIg, error: igErr } = await db
       .from('instagram_posts')
       .insert(igRows)
       .select('id');
 
     if (!igErr && insertedIg && insertedIg.length > 0) {
-      const { error: trackIgErr } = await supabase.from('demo_seeded_ids').insert(
+      const { error: trackIgErr } = await db.from('demo_seeded_ids').insert(
         insertedIg.map((r) => ({
           user_id: userId,
           table_name: 'instagram_posts',
@@ -107,12 +109,12 @@ export async function POST() {
     }
     // If instagram_posts insert fails (e.g. table or RLS), continue – context API will still work with empty history
 
-    // 5) Optional: add demo linked account for Monitoring if none set
-    const { data: profile } = await supabase.from('profiles').select('linked_accounts').eq('id', userId).maybeSingle();
+    // 5) Optional: add demo linked account for Monitoring if none set (skip for demo user with no profile)
+    const { data: profile } = await db.from('profiles').select('linked_accounts').eq('id', userId).maybeSingle();
     const linked = (profile?.linked_accounts as Record<string, string> | null) ?? {};
     const hasAny = linked.instagram || linked.tiktok || linked.youtube || linked.x;
-    if (!hasAny) {
-      await supabase
+    if (!hasAny && user) {
+      await db
         .from('profiles')
         .update({
           linked_accounts: {

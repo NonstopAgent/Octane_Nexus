@@ -1,7 +1,9 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { cookies } from 'next/headers';
 import { createServerSupabaseClient } from '@/lib/supabaseServer';
+import { getEffectiveUserIdFromCookieStore } from '@/lib/authServer';
 import {
   createIdea,
   draftScript,
@@ -16,14 +18,13 @@ export async function runOneHourSimulation(): Promise<
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
-    error: authError,
   } = await supabase.auth.getUser();
+  const cookieStore = await cookies();
+  const userId = getEffectiveUserIdFromCookieStore(cookieStore, user?.id ?? null);
 
-  if (authError || !user) {
+  if (!userId) {
     return { success: false, error: 'Not authenticated' };
   }
-
-  const userId = user.id;
 
   try {
     // 1. Create 3 ideas

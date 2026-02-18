@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { MoreVertical, FileText, Video, CheckCircle, LayoutGrid, CalendarDays } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
+import { DEMO_USER_ID } from '@/lib/auth';
 import ScriptEditorModal from './ScriptEditorModal';
 import ScheduleModal from './ScheduleModal';
 import { POST_STATUS, type PostStatus } from '@/lib/status';
@@ -59,6 +60,21 @@ export default function KanbanBoard({ userId, refreshTrigger }: KanbanBoardProps
 
   async function refreshPosts() {
     if (!userId) return;
+    if (userId === DEMO_USER_ID) {
+      try {
+        const res = await fetch('/api/production/posts', { credentials: 'include' });
+        const data = res.ok ? await res.json() : [];
+        setPosts((data as ContentPost[]) || []);
+        if (selectedPost) {
+          const updated = (data as ContentPost[])?.find((p) => p.id === selectedPost.id);
+          if (updated) setSelectedPost(updated);
+        }
+      } catch (e) {
+        console.error('Failed to fetch posts:', e);
+        setPosts([]);
+      }
+      return;
+    }
     const { data, error } = await supabase
       .from('content_posts')
       .select('*')
@@ -76,7 +92,7 @@ export default function KanbanBoard({ userId, refreshTrigger }: KanbanBoardProps
     if (refreshTrigger != null && userId) {
       refreshPosts();
     }
-  }, [refreshTrigger]);
+  }, [refreshTrigger, userId]);
 
   useEffect(() => {
     if (!userId) {
@@ -86,13 +102,19 @@ export default function KanbanBoard({ userId, refreshTrigger }: KanbanBoardProps
 
     void (async () => {
       try {
-        const { data, error } = await supabase
-          .from('content_posts')
-          .select('*')
-          .eq('user_id', userId)
-          .order('updated_at', { ascending: false });
-        if (error) console.error('Failed to fetch posts:', error);
-        setPosts((data as ContentPost[]) || []);
+        if (userId === DEMO_USER_ID) {
+          const res = await fetch('/api/production/posts', { credentials: 'include' });
+          const data = res.ok ? await res.json() : [];
+          setPosts((data as ContentPost[]) || []);
+        } else {
+          const { data, error } = await supabase
+            .from('content_posts')
+            .select('*')
+            .eq('user_id', userId)
+            .order('updated_at', { ascending: false });
+          if (error) console.error('Failed to fetch posts:', error);
+          setPosts((data as ContentPost[]) || []);
+        }
       } finally {
         setLoading(false);
       }
@@ -100,14 +122,27 @@ export default function KanbanBoard({ userId, refreshTrigger }: KanbanBoardProps
   }, [userId]);
 
   async function movePost(postId: string, newStatus: ContentPost['status']) {
-    const { error } = await supabase
-      .from('content_posts')
-      .update({ status: newStatus, updated_at: new Date().toISOString() })
-      .eq('id', postId);
+    if (userId === DEMO_USER_ID) {
+      const res = await fetch(`/api/production/posts/${postId}`, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (!res.ok) {
+        console.error('Failed to move post:', await res.text());
+        return;
+      }
+    } else {
+      const { error } = await supabase
+        .from('content_posts')
+        .update({ status: newStatus, updated_at: new Date().toISOString() })
+        .eq('id', postId);
 
-    if (error) {
-      console.error('Failed to move post:', error);
-      return;
+      if (error) {
+        console.error('Failed to move post:', error);
+        return;
+      }
     }
     setPosts((prev) =>
       prev.map((p) => (p.id === postId ? { ...p, status: newStatus } : p))

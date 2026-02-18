@@ -64,7 +64,9 @@ export default function ChatPage() {
   useEffect(() => {
     async function init() {
       const { data: { user } } = await supabase.auth.getUser();
-      if (user) setUserId(user.id);
+      const { getEffectiveUserId } = await import('@/lib/auth');
+      const effectiveId = await getEffectiveUserId(user?.id ?? null);
+      if (effectiveId) setUserId(effectiveId);
       if (typeof window !== 'undefined') {
         const vision = localStorage.getItem('brand_vision');
         if (vision) {

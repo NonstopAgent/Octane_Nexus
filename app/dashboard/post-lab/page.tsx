@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabaseClient';
+import { getEffectiveUserId } from '@/lib/auth';
 import { generateMetadata } from '@/actions/generate-metadata';
 import { schedulePost } from '@/actions/schedule-post';
 import { renderPostAction } from '@/actions/render-post';
@@ -97,8 +98,11 @@ function PhoneFrame({ children }: { children: React.ReactNode }) {
   );
 }
 
+const AUTH_RESOLVE_MS = 2000;
+
 export default function PostLabPage() {
   const [userId, setUserId] = useState<string | null>(null);
+  const [authResolved, setAuthResolved] = useState(false);
   const [posts, setPosts] = useState<ContentPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [activePost, setActivePost] = useState<ContentPost | null>(null);
@@ -127,9 +131,22 @@ export default function PostLabPage() {
   }, []);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setUserId(user?.id ?? null);
-    });
+    let cancelled = false;
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      const effectiveId = await getEffectiveUserId(user?.id ?? null);
+      if (!cancelled) {
+        setUserId(effectiveId);
+        setAuthResolved(true);
+      }
+    })();
+    const t = setTimeout(() => {
+      if (!cancelled) setAuthResolved(true);
+    }, AUTH_RESOLVE_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
   }, []);
 
   async function createFromLibraryFormat() {
@@ -301,10 +318,36 @@ export default function PostLabPage() {
     }
   }, [effectiveVideoUrl, videoError]);
 
-  if (!userId) {
+  if (!authResolved) {
     return (
       <div className="flex min-h-[400px] items-center justify-center rounded-xl border border-slate-800 bg-slate-950/50">
-        <p className="text-slate-400">Loading…</p>
+        <Loader2 className="h-8 w-8 animate-spin text-amber-400" aria-hidden />
+      </div>
+    );
+  }
+
+  if (!userId) {
+    return (
+      <div className="space-y-6">
+        <DashboardPageHeader
+          title="Post Lab"
+          subtitle="The Shipping Department — finalize your generated videos before posting."
+          icon={<Sparkles className="h-5 w-5" />}
+        />
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-slate-800 bg-slate-950/80 px-8 py-16 text-center min-h-[320px]">
+          <Video className="h-14 w-14 text-slate-600 mb-4" />
+          <h2 className="text-xl font-semibold text-slate-100">Sign in to continue</h2>
+          <p className="mt-2 max-w-sm text-sm text-slate-400">
+            Post Lab needs an account so your drafts and videos are saved. Sign in or create an account to continue.
+          </p>
+          <Link
+            href="/login?returnTo=/dashboard/post-lab"
+            className="mt-6 inline-flex items-center gap-2 rounded-lg border-2 border-amber-500 bg-amber-500 px-5 py-2.5 text-sm font-semibold text-slate-950 hover:bg-amber-400 transition"
+          >
+            Sign in
+          </Link>
+          <DemoNudge className="mt-6" />
+        </div>
       </div>
     );
   }
