@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server';
-import { createServerSupabaseClient } from '@/lib/supabaseServer';
+import { NextRequest, NextResponse } from 'next/server';
+import { createServerSupabaseClient, createServiceRoleClient } from '@/lib/supabaseServer';
+import { getEffectiveUserIdFromRequest } from '@/lib/authServer';
 import { buildNexusIntelligence } from '@/lib/intelligence/orchestrator';
 import type { NexusUserProfile } from '@/lib/intelligence/profile';
 import type { HistoricalPostData } from '@/lib/intelligence/patterns';
@@ -11,22 +12,24 @@ function formatHour(h: number): string {
   return `${h - 12}p`;
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     const supabase = await createServerSupabaseClient();
     const {
       data: { user },
-      error: authError,
     } = await supabase.auth.getUser();
+    const userId = getEffectiveUserIdFromRequest(req, user?.id ?? null);
 
-    if (authError || !user) {
+    if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { data: profile } = await supabase
+    const db = user?.id === userId ? supabase : createServiceRoleClient();
+
+    const { data: profile } = await db
       .from('profiles')
       .select('niche, brand_vision')
-      .eq('id', user.id)
+      .eq('id', userId)
       .maybeSingle();
 
     const niche = (profile?.niche ?? profile?.brand_vision ?? '')?.toString().trim() || 'Not set';
@@ -47,10 +50,10 @@ export async function GET() {
       },
     };
 
-    const { data: igPosts } = await supabase
+    const { data: igPosts } = await db
       .from('instagram_posts')
       .select('quality_score, posted_at')
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .not('posted_at', 'is', null);
 
     const historicalPosts: HistoricalPostData[] = (igPosts ?? []).map((p) => ({

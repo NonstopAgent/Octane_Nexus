@@ -66,11 +66,12 @@ export default function TrendsPage() {
     try {
       const res = await fetch('/api/production/idea', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title: video.title }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to add idea');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error((data as { error?: string }).error || 'Failed to add idea');
       toast.success('Added to Idea column');
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed to add to Production');

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabaseServer';
+import { getEffectiveUserIdFromRequest } from '@/lib/authServer';
 import { POST_STATUS } from '@/lib/status';
 
 export async function POST(req: NextRequest) {
@@ -7,10 +8,10 @@ export async function POST(req: NextRequest) {
     const supabase = await createServerSupabaseClient();
     const {
       data: { user },
-      error: authError,
     } = await supabase.auth.getUser();
+    const userId = getEffectiveUserIdFromRequest(req, user?.id ?? null);
 
-    if (authError || !user) {
+    if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -27,7 +28,7 @@ export async function POST(req: NextRequest) {
     const { data, error } = await supabase
       .from('content_posts')
       .insert({
-        user_id: user.id,
+        user_id: userId,
         title,
         status: POST_STATUS.IDEA,
       })
