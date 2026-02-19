@@ -3,7 +3,6 @@ import { NextRequest, NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 import { createClient } from '@supabase/supabase-js';
 import { getEffectiveUserId } from '@/lib/effectiveUser';
-import { POST_STATUS } from '@/lib/constants';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://zdvedfnpipgygvikoooa.supabase.co';
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_1EEA1MtGEqz8vWJAApQM6Q_FnjK-aaw';
@@ -12,7 +11,6 @@ export async function GET(req: NextRequest) {
   try {
     const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     const { data: { user } } = await supabase.auth.getUser();
-    // Demo mode: allow unauthenticated when x-demo-mode header or cookie present
     const demoHeader = req.headers.get('x-demo-mode') === 'true';
     const demoCookie = req.cookies.get('octane_demo_mode')?.value === 'true';
     const effectiveUserId = getEffectiveUserId(user?.id ?? null) ?? (demoHeader || demoCookie ? 'demo_user_mvp_v1' : null);
@@ -21,53 +19,55 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Try content_posts table; fallback to mock counts for demo
-    let counts = {
-      idea: 0,
-      scripting: 0,
-      filming: 0,
-      ready: 0,
+    // Summary cards: posts this week, scheduled, posted, streak
+    let summary = {
+      postsThisWeek: 0,
       scheduled: 0,
       posted: 0,
+      streak: 0,
     };
 
     try {
-      const { data: posts, error } = await supabase
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('streak_count')
+        .eq('id', effectiveUserId)
+        .maybeSingle();
+
+      if (profile?.streak_count != null) {
+        summary.streak = Number(profile.streak_count) || 0;
+      }
+    } catch {
+      // ignore
+    }
+
+    try {
+      const { data: posts } = await supabase
         .from('content_posts')
-        .select('status')
+        .select('status, created_at, scheduled_at')
         .eq('user_id', effectiveUserId);
 
-      if (!error && Array.isArray(posts)) {
+      if (Array.isArray(posts)) {
+        const now = new Date();
+        const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
         for (const p of posts) {
-          const s = (p?.status as string) || '';
-          if (s in counts) (counts as Record<string, number>)[s]++;
+          const status = (p?.status as string) || '';
+          const createdAt = p?.created_at ? new Date(p.created_at) : null;
+          if (status === 'scheduled') summary.scheduled++;
+          if (status === 'posted') summary.posted++;
+          if (createdAt && createdAt >= weekAgo) summary.postsThisWeek++;
         }
       }
     } catch {
-      // Table may not exist; use mock for demo
+      // content_posts may not exist; use demo mock
       if (effectiveUserId === 'demo_user_mvp_v1') {
-        counts = { idea: 2, scripting: 1, filming: 1, ready: 3, scheduled: 2, posted: 5 };
+        summary = { postsThisWeek: 3, scheduled: 2, posted: 5, streak: 7 };
       }
     }
 
-    const pipeline = {
-      [POST_STATUS.IDEA]: counts.idea,
-      [POST_STATUS.SCRIPTING]: counts.scripting,
-      [POST_STATUS.FILMING]: counts.filming,
-      [POST_STATUS.READY]: counts.ready,
-      [POST_STATUS.SCHEDULED]: counts.scheduled,
-      [POST_STATUS.POSTED]: counts.posted,
-    };
-
-    const topActions = [
-      { label: 'Pick 1 idea from Trends', href: '/trends', cta: 'Go to Trends' },
-      { label: 'Move 1 post to Ready', href: '/dashboard/production', cta: 'Production Board' },
-      { label: 'Schedule 1 ready post', href: '/dashboard/schedule', cta: 'Schedule' },
-    ];
-
-    return NextResponse.json({ pipeline, topActions });
+    return NextResponse.json(summary);
   } catch (err) {
-    console.error('creator/today error:', err);
+    console.error('monitoring/summary error:', err);
     return NextResponse.json({ error: 'Internal error' }, { status: 500 });
   }
 }

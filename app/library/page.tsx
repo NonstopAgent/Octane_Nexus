@@ -169,10 +169,8 @@ function LibraryContent() {
 
     try {
       const ideas = blueprints.map((bp) => bp.idea);
-      const result = await generateLibrarianInsight({
-        savedIdeas: ideas,
-        userName: fullName || undefined,
-      });
+      const note = ideas.join('\n');
+      const result = await generateLibrarianInsight(note);
       setInsight(result);
     } catch (err: unknown) {
       setInsightError(
@@ -901,7 +899,7 @@ function LibraryContent() {
                         Hook
                       </p>
                       <p className="mt-2 text-2xl font-semibold leading-snug text-slate-50 md:text-3xl">
-                        {active.blueprint[selectedPlatform].hook}
+                        {active.blueprint[selectedPlatform]?.hook ?? ''}
                       </p>
                     </div>
 
@@ -910,7 +908,7 @@ function LibraryContent() {
                         Middle beats
                       </p>
                       <ul className="mt-2 list-disc space-y-1 pl-5 text-base text-slate-100 md:text-lg">
-                        {active.blueprint[selectedPlatform].meat.map(
+                        {(active.blueprint[selectedPlatform]?.meat ?? []).map(
                           (point, idx) => (
                             <li key={idx}>{point}</li>
                           )
@@ -923,7 +921,7 @@ function LibraryContent() {
                         Call to action
                       </p>
                       <p className="mt-2 text-lg font-medium text-slate-50 md:text-xl">
-                        {active.blueprint[selectedPlatform].cta}
+                        {active.blueprint[selectedPlatform]?.cta ?? ''}
                       </p>
                     </div>
 
@@ -932,7 +930,7 @@ function LibraryContent() {
                         Setup tip
                       </p>
                       <p className="mt-2 text-sm text-slate-200 md:text-base">
-                        {active.blueprint[selectedPlatform].setup_tip}
+                        {active.blueprint[selectedPlatform]?.setup_tip ?? ''}
                       </p>
                     </div>
                   </div>

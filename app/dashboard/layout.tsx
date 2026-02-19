@@ -3,7 +3,11 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { UserCircle, BookOpen, BarChart3, Settings, MessageCircle, Sparkles, CalendarDays, LayoutGrid, TrendingUp } from 'lucide-react';
+<<<<<<< Current (Your changes)
+import { UserCircle, BookOpen, BarChart3, Settings, MessageCircle, Sparkles, CalendarDays, LayoutGrid, TrendingUp, Scissors } from 'lucide-react';
+=======
+import { UserCircle, BookOpen, BarChart3, Settings, MessageCircle, Sparkles, CalendarDays, Zap } from 'lucide-react';
+>>>>>>> Incoming (Background Agent changes)
 import { supabase } from '@/lib/supabaseClient';
 import { getCalibrationLevel } from '@/lib/gemini';
 import CreatorDailyBar from '@/components/dashboard/CreatorDailyBar';
@@ -77,6 +81,7 @@ export default function DashboardLayout({
   }, []);
 
   const navItems = [
+    { href: '/dashboard/creator', label: 'Creator Loop', icon: Zap, external: false },
     { href: '/identity', label: 'Identity', icon: UserCircle, external: false },
     { href: '/dashboard/library', label: 'Library', icon: BookOpen, external: false },
     { href: '/dashboard/trends', label: 'Trends', icon: TrendingUp, external: false },
@@ -84,11 +89,15 @@ export default function DashboardLayout({
     { href: '/dashboard/post-lab', label: 'Post Lab', icon: Sparkles, external: false },
     { href: '/dashboard/production', label: 'Production', icon: LayoutGrid, external: false },
     { href: '/dashboard/schedule', label: 'Schedule', icon: CalendarDays, external: false },
+    { href: '/dashboard/clip-studio', label: 'Clip Studio', icon: Scissors, external: false },
     { href: '/dashboard/monitoring', label: 'Monitoring', icon: BarChart3, external: false },
     { href: '/dashboard/settings', label: 'Settings', icon: Settings, external: false },
   ];
 
   const isActive = (href: string) => {
+    if (href === '/dashboard/creator') {
+      return pathname === '/dashboard/creator';
+    }
     if (href === '/dashboard/library') {
       return pathname === '/dashboard/library' || pathname === '/dashboard';
     }

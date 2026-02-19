@@ -3,6 +3,7 @@ import Stripe from 'stripe';
 import { supabase } from '@/lib/supabaseClient';
 import { headers } from 'next/headers';
 
+<<<<<<< Current (Your changes)
 export async function POST(req: NextRequest) {
   const stripeKey = process.env.STRIPE_SECRET_KEY;
 
@@ -12,6 +13,12 @@ export async function POST(req: NextRequest) {
       { status: 501, headers: { "content-type": "application/json" } }
     );
   }
+=======
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+  // @ts-ignore - newer Stripe API version
+  apiVersion: '2024-11-20.acacia',
+});
+>>>>>>> Incoming (Background Agent changes)
 
   const stripe = new Stripe(stripeKey, {
     apiVersion: '2023-10-16',

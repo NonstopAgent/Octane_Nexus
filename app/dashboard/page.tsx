@@ -1074,7 +1074,7 @@ function DashboardContent() {
                         Hook
                       </p>
                       <p className="mt-2 text-2xl font-semibold leading-snug text-slate-50 md:text-3xl">
-                        {active.blueprint[selectedPlatform].hook}
+                        {(active.blueprint as PlatformSpecificBlueprints)[selectedPlatform!]?.hook ?? (active.blueprint as VideoBlueprint).hook}
                       </p>
                     </div>
 
@@ -1083,7 +1083,7 @@ function DashboardContent() {
                         Middle beats
                       </p>
                       <ul className="mt-2 list-disc space-y-1 pl-5 text-base text-slate-100 md:text-lg">
-                        {active.blueprint[selectedPlatform].meat.map(
+                        {((active.blueprint as PlatformSpecificBlueprints)[selectedPlatform!]?.meat ?? (active.blueprint as VideoBlueprint).meat ?? []).map(
                           (point, idx) => (
                             <li key={idx}>{point}</li>
                           )
@@ -1096,7 +1096,7 @@ function DashboardContent() {
                         Call to action
                       </p>
                       <p className="mt-2 text-lg font-medium text-slate-50 md:text-xl">
-                        {active.blueprint[selectedPlatform].cta}
+                        {(active.blueprint as PlatformSpecificBlueprints)[selectedPlatform!]?.cta ?? (active.blueprint as VideoBlueprint).cta}
                       </p>
                     </div>
 
@@ -1105,7 +1105,7 @@ function DashboardContent() {
                         Setup tip
                       </p>
                       <p className="mt-2 text-sm text-slate-200 md:text-base">
-                        {active.blueprint[selectedPlatform].setup_tip}
+                        {(active.blueprint as PlatformSpecificBlueprints)[selectedPlatform!]?.setup_tip ?? (active.blueprint as VideoBlueprint).setup_tip}
                       </p>
                     </div>
 

@@ -1,3 +1,4 @@
+<<<<<<< Current (Your changes)
 import { cookies } from 'next/headers';
 import { createServerSupabaseClient, createServiceRoleClient } from '@/lib/supabaseServer';
 import { getEffectiveUserIdFromCookieStore } from '@/lib/authServer';
@@ -6,6 +7,17 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowRight, Download } from 'lucide-react';
 import ToolCard, { type CreatorTool } from '@/components/dashboard/ToolCard';
+=======
+'use client';
+
+import { useState, useEffect } from 'react';
+import { Plus, Zap, Loader2, FileText, X, Copy, Check, Save, User, ExternalLink, ArrowRight } from 'lucide-react';
+import { generateVideoConcepts, generateScript, generateTopCreators, generateToolRecommendations } from '@/lib/gemini';
+
+type VideoConcept = { title: string; angle: string; visual: string };
+type VideoScript = { hook: string; body: string; cta: string };
+import YouTubeRecommender from '@/components/dashboard/YouTubeRecommender';
+>>>>>>> Incoming (Background Agent changes)
 import ScrollableRow from '@/components/ui/ScrollableRow';
 import Playbook from '@/components/dashboard/Playbook';
 import LibraryClientSection from '@/components/dashboard/LibraryClientSection';

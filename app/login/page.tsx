@@ -307,6 +307,23 @@ function LoginContent() {
             </form>
           )}
 
+          {/* Demo Mode Button - when NEXT_PUBLIC_DEMO_MODE=true */}
+          {process.env.NEXT_PUBLIC_DEMO_MODE === 'true' && (
+            <div className="mt-6 pt-6 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => {
+                  document.cookie = 'octane_demo_mode=true; path=/; max-age=86400';
+                  router.push('/dashboard/creator');
+                }}
+                className="w-full inline-flex min-h-[48px] items-center justify-center gap-2 rounded-xl border-2 border-amber-500/50 bg-amber-500/10 px-4 text-sm font-semibold text-amber-400 transition-all hover:border-amber-500 hover:bg-amber-500/20"
+              >
+                <Zap className="h-4 w-4" />
+                Try Demo (No Sign In)
+              </button>
+            </div>
+          )}
+
           {/* Mock Login Button (Development Only) */}
           {process.env.NODE_ENV === 'development' && isLocalhost() && (
             <div className="mt-6 pt-6 border-t border-slate-800">
