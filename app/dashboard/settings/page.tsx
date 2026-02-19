@@ -18,15 +18,17 @@ import {
   Key,
   Shield,
   Database,
+  Palette,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabaseClient';
 import { seedDemoData } from '@/actions/seed-data';
 import DashboardPageHeader from '@/components/dashboard/DashboardPageHeader';
+import StyleTokensSection from '@/components/dashboard/StyleTokensSection';
 
 const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
 
-type TabId = 'general' | 'integrations' | 'billing' | 'developer' | 'demo';
+type TabId = 'general' | 'integrations' | 'billing' | 'developer' | 'style' | 'demo';
 
 type LinkedAccounts = {
   instagram: string | null;
@@ -39,6 +41,7 @@ const BASE_TABS: { id: TabId; label: string; icon: typeof User }[] = [
   { id: 'general', label: 'General', icon: User },
   { id: 'integrations', label: 'Integrations', icon: Plug },
   { id: 'billing', label: 'Billing', icon: CreditCard },
+  { id: 'style', label: 'Style', icon: Palette },
   { id: 'developer', label: 'Developer', icon: Code2 },
   ...(DEMO_MODE ? [{ id: 'demo' as const, label: 'Demo Data', icon: Database }] : []),
 ];
@@ -546,6 +549,8 @@ export default function SettingsPage() {
               </div>
             </div>
           )}
+
+          {activeTab === 'style' && <StyleTokensSection />}
 
           {DEMO_MODE && activeTab === 'demo' && (
             <div className="space-y-6">

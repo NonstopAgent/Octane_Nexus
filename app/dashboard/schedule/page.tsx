@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   CalendarDays,
   Instagram,
@@ -16,9 +16,13 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabaseClient';
+import { getEffectiveUserId } from '@/lib/auth';
+import { POST_STATUS } from '@/lib/postStatus';
 import { SkeletonCardGrid } from '@/components/ui/SkeletonCard';
 import StatusChip from '@/components/ui/StatusChip';
 import DashboardPageHeader from '@/components/dashboard/DashboardPageHeader';
+
+const AUTH_RESOLVE_MS = 2000;
 
 type Platform = 'instagram' | 'youtube' | 'x' | 'tiktok';
 
@@ -65,8 +69,37 @@ function getPlatformIcon(platform: Platform) {
   }
 }
 
+function mapPlatform(p: string | null): Platform {
+  if (!p) return 'tiktok';
+  const lower = p.toLowerCase();
+  if (lower === 'tiktok') return 'tiktok';
+  if (lower === 'youtube' || lower === 'shorts') return 'youtube';
+  if (lower === 'instagram' || lower === 'reels') return 'instagram';
+  if (lower === 'x' || lower === 'twitter') return 'x';
+  return 'tiktok';
+}
+
+function postToContentItem(p: Record<string, unknown>, status: 'draft' | 'scheduled'): ContentItem {
+  const scheduledDate = p.scheduled_date as string | null;
+  return {
+    id: p.id as string,
+    title: (p.title as string) || undefined,
+    media_url: ((p.final_video_url || p.background_video_url) as string) || '',
+    caption: (p.caption as string) || '',
+    hashtags: (Array.isArray(p.hashtags) ? p.hashtags : []) as string[],
+    platform: mapPlatform((p.platform as string) || null),
+    scheduled_date: scheduledDate ? new Date(scheduledDate).toISOString().slice(0, 10) : null,
+    status,
+    created_at: (p.created_at as string) || new Date().toISOString(),
+    source: 'content_posts',
+  };
+}
+
 export default function SchedulePage() {
-  const [items, setItems] = useState<ContentItem[]>([]);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [authResolved, setAuthResolved] = useState(false);
+  const [scheduledItems, setScheduledItems] = useState<ContentItem[]>([]);
+  const [drafts, setDrafts] = useState<ContentItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [viewYear, setViewYear] = useState(() => new Date().getFullYear());
@@ -77,77 +110,59 @@ export default function SchedulePage() {
   const today = new Date();
   const [scheduleDate, setScheduleDate] = useState<string>(() => today.toISOString().slice(0, 10));
 
-  function mapPlatform(p: string | null): Platform {
-    if (!p) return 'tiktok';
-    const lower = p.toLowerCase();
-    if (lower === 'tiktok') return 'tiktok';
-    if (lower === 'youtube' || lower === 'shorts') return 'youtube';
-    if (lower === 'instagram' || lower === 'reels') return 'instagram';
-    if (lower === 'x' || lower === 'twitter') return 'x';
-    return 'tiktok';
-  }
-
-  useEffect(() => {
-    async function load() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        setLoading(false);
-        return;
-      }
-
-      const [calendarRes, postsRes] = await Promise.all([
-        supabase
-          .from('content_calendar')
-          .select('id, media_url, caption, hashtags, platform, scheduled_date, status, created_at')
-          .eq('user_id', user.id)
-          .order('scheduled_date', { ascending: true, nullsFirst: false }),
-        supabase
-          .from('content_posts')
-          .select('id, title, final_video_url, background_video_url, caption, hashtags, platform, scheduled_date, status, created_at')
-          .eq('user_id', user.id)
-          .eq('status', 'scheduled')
-          .order('scheduled_date', { ascending: true, nullsFirst: false }),
-      ]);
-
-      const calendarItems: ContentItem[] = ((calendarRes.data || []) as ContentItem[]).map((i) => ({
-        ...i,
-        source: 'content_calendar' as const,
-      }));
-
-      const postItems: ContentItem[] = ((postsRes.data || []) as Record<string, unknown>[]).map((p) => ({
-        id: p.id as string,
-        title: (p.title as string) || undefined,
-        media_url: (p.final_video_url || p.background_video_url || '') as string,
-        caption: (p.caption || '') as string,
-        hashtags: (Array.isArray(p.hashtags) ? p.hashtags : []) as string[],
-        platform: mapPlatform((p.platform as string) || null),
-        scheduled_date: p.scheduled_date
-          ? new Date(p.scheduled_date as string).toISOString().slice(0, 10)
-          : null,
-        status: 'scheduled' as const,
-        created_at: (p.created_at as string) || new Date().toISOString(),
-        source: 'content_posts' as const,
-      }));
-
-      if (calendarRes.error) setError(calendarRes.error.message);
-      else if (postsRes.error) setError(postsRes.error.message);
-
-      const merged = [...calendarItems, ...postItems].sort((a, b) => {
-        const da = a.scheduled_date || '';
-        const db = b.scheduled_date || '';
-        return da.localeCompare(db);
-      });
-      setItems(merged);
-      setLoading(false);
+  const fetchSchedule = useCallback(async (uid: string, start: string, end: string) => {
+    const res = await fetch(
+      `/api/schedule?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`,
+      { credentials: 'include' }
+    );
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setError((data as { error?: string }).error || 'Failed to load schedule');
+      return;
     }
-    load();
+    setError(null);
+    const data = await res.json();
+    const scheduled = (data.scheduled ?? []).map((p: Record<string, unknown>) =>
+      postToContentItem(p, 'scheduled')
+    );
+    const draftList = (data.drafts ?? []).map((p: Record<string, unknown>) =>
+      postToContentItem(p, 'draft')
+    );
+    setScheduledItems(scheduled);
+    setDrafts(draftList);
   }, []);
 
-  const drafts = useMemo(() => items.filter((i) => i.status === 'draft'), [items]);
-  const scheduledItems = useMemo(
-    () => items.filter((i) => i.status === 'scheduled' && i.scheduled_date),
-    [items]
-  );
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      const effectiveId = await getEffectiveUserId(user?.id ?? null);
+      if (!cancelled) {
+        setUserId(effectiveId);
+        setAuthResolved(true);
+      }
+    })();
+    const t = setTimeout(() => {
+      if (!cancelled) setAuthResolved(true);
+    }, AUTH_RESOLVE_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!userId || !authResolved) {
+      setLoading(false);
+      return;
+    }
+    const first = new Date(viewYear, viewMonth, 1);
+    const last = new Date(viewYear, viewMonth + 1, 0);
+    const start = first.toISOString().slice(0, 10);
+    const end = last.toISOString().slice(0, 10);
+    setLoading(true);
+    fetchSchedule(userId, start, end).finally(() => setLoading(false));
+  }, [userId, authResolved, viewYear, viewMonth, fetchSchedule]);
 
   const firstOfMonth = new Date(viewYear, viewMonth, 1);
   const startDay = firstOfMonth.getDay();
@@ -194,22 +209,28 @@ export default function SchedulePage() {
 
   async function scheduleDraft(item: ContentItem, dateStr: string) {
     setScheduling(item.id);
-
-    const { error } = await supabase
-      .from('content_calendar')
-      .update({ scheduled_date: dateStr, status: 'scheduled' })
-      .eq('id', item.id);
-
-    if (error) {
-      setError(error.message);
-    } else {
-      setItems((prev) =>
-        prev.map((i) =>
-          i.id === item.id ? { ...i, scheduled_date: dateStr, status: 'scheduled' as const } : i
-        )
-      );
+    setError(null);
+    try {
+      const res = await fetch('/api/schedule', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ postId: item.id, scheduled_date: dateStr }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError((data as { error?: string }).error || 'Failed to schedule');
+        toast.error((data as { error?: string }).error || 'Failed to schedule');
+        return;
+      }
+      toast.success('Scheduled');
+      setDrafts((prev) => prev.filter((i) => i.id !== item.id));
+      const first = new Date(viewYear, viewMonth, 1);
+      const last = new Date(viewYear, viewMonth + 1, 0);
+      await fetchSchedule(userId!, first.toISOString().slice(0, 10), last.toISOString().slice(0, 10));
+    } finally {
+      setScheduling(null);
     }
-    setScheduling(null);
   }
 
   async function markAsPosted(item: ContentItem) {
@@ -221,17 +242,18 @@ export default function SchedulePage() {
       const now = new Date().toISOString();
       const todayDate = new Date().toDateString();
 
-      // 1) Move content_posts → posted
+      // 1) Move content_posts → posted (ownership: eq user_id is implied by session)
       if (item.source === 'content_posts') {
         const { error: updateErr } = await supabase
           .from('content_posts')
-          .update({ status: 'posted', updated_at: now })
-          .eq('id', item.id);
+          .update({ status: POST_STATUS.POSTED, updated_at: now })
+          .eq('id', item.id)
+          .eq('user_id', user.id);
         if (updateErr) throw updateErr;
       } else {
         const { error: updateErr } = await supabase
           .from('content_calendar')
-          .update({ status: 'posted' })
+          .update({ status: POST_STATUS.POSTED })
           .eq('id', item.id);
         if (updateErr) throw updateErr;
       }
@@ -244,7 +266,7 @@ export default function SchedulePage() {
         caption: item.caption || item.title || null,
         hashtags: item.hashtags || [],
         quality_score: null,
-        status: 'posted',
+        status: POST_STATUS.POSTED,
         posted_at: now,
         created_at: now,
         updated_at: now,
@@ -293,8 +315,8 @@ export default function SchedulePage() {
         .eq('id', user.id);
 
       // 4) Update local state
-      setItems((prev) =>
-        prev.map((i) => (i.id === item.id ? { ...i, status: 'posted' as const } : i))
+      setScheduledItems((prev) =>
+        prev.map((i) => (i.id === item.id ? { ...i, status: 'posted' as const } : i)) // UI status matches POST_STATUS.POSTED
       );
       setSelectedItem(null);
       toast.success(`Posted! Streak: ${newStreak}d 🔥 +25 XP`);
@@ -308,7 +330,7 @@ export default function SchedulePage() {
     }
   }
 
-  if (loading) {
+  if (!authResolved || (userId && loading)) {
     return (
       <div className="space-y-6">
         <div className="flex items-center justify-between">
@@ -318,6 +340,27 @@ export default function SchedulePage() {
           </div>
         </div>
         <SkeletonCardGrid count={6} />
+      </div>
+    );
+  }
+
+  if (authResolved && !userId) {
+    return (
+      <div className="space-y-6">
+        <DashboardPageHeader
+          title="Schedule"
+          subtitle="Content calendar — schedule drafts and view posts by date."
+          icon={<CalendarDays className="h-5 w-5" />}
+        />
+        <div className="rounded-2xl border border-slate-800 bg-slate-950/80 p-12 text-center">
+          <p className="text-slate-400">Sign in to view and schedule content.</p>
+          <a
+            href="/login?returnTo=/dashboard/schedule"
+            className="mt-4 inline-flex items-center gap-2 rounded-full border-2 border-amber-500 bg-amber-500 px-5 py-2.5 text-sm font-semibold text-slate-950 hover:bg-amber-400"
+          >
+            Sign in
+          </a>
+        </div>
       </div>
     );
   }
@@ -459,7 +502,7 @@ export default function SchedulePage() {
           <div className="flex-1 space-y-3 overflow-y-auto max-h-[400px]">
             {drafts.length === 0 ? (
               <div className="text-center py-8 text-slate-500 text-sm">
-                No drafts. Add content in Post Lab.
+                No drafts ready. Move content to Ready in Production or Post Lab, then it will appear here.
               </div>
             ) : (
               drafts.map((item) => {

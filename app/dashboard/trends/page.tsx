@@ -1,13 +1,14 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { TrendingUp, Eye, Send } from 'lucide-react';
+import { TrendingUp, Eye, Send, Scissors } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabaseClient';
 import { SkeletonCardGrid } from '@/components/ui/SkeletonCard';
 import EmptyState from '@/components/ui/EmptyState';
 import StatusChip from '@/components/ui/StatusChip';
 import DashboardPageHeader from '@/components/dashboard/DashboardPageHeader';
+import ClipItSafetyModal from '@/components/dashboard/ClipItSafetyModal';
 
 type TrendingVideo = {
   id: string;
@@ -60,6 +61,7 @@ export default function TrendsPage() {
   const [loading, setLoading] = useState(true);
   const [videos, setVideos] = useState<TrendingVideo[]>([]);
   const [sendingId, setSendingId] = useState<string | null>(null);
+  const [clipVideo, setClipVideo] = useState<TrendingVideo | null>(null);
 
   async function handleSendToProduction(video: TrendingVideo) {
     setSendingId(video.id);
@@ -136,25 +138,38 @@ export default function TrendsPage() {
                 <span className="font-medium text-slate-300">Why it worked:</span>{' '}
                 {video.whyItWorked}
               </p>
-              <button
-                type="button"
-                onClick={() => handleSendToProduction(video)}
-                disabled={sendingId === video.id}
-                className="mt-3 w-full inline-flex items-center justify-center gap-2 rounded-lg border border-amber-500 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-300 hover:bg-amber-500/20 disabled:opacity-50 transition"
-              >
-                {sendingId === video.id ? (
-                  <>Sending…</>
-                ) : (
-                  <>
-                    <Send className="h-3.5 w-3.5" />
-                    Send to Production
-                  </>
-                )}
-              </button>
+              <div className="mt-3 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleSendToProduction(video)}
+                  disabled={sendingId === video.id}
+                  className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg border border-amber-500 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-300 hover:bg-amber-500/20 disabled:opacity-50 transition"
+                >
+                  {sendingId === video.id ? <>Sending…</> : <><Send className="h-3.5 w-3.5" /> Send to Production</>}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setClipVideo(video)}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-600 bg-slate-800/60 px-3 py-2 text-xs font-medium text-slate-300 hover:bg-slate-700 hover:text-slate-100 transition"
+                  title="Clip It — Safety check"
+                >
+                  <Scissors className="h-3.5 w-3.5" />
+                  Clip It
+                </button>
+              </div>
             </article>
           ))}
         </div>
       )}
+
+      <ClipItSafetyModal
+        open={!!clipVideo}
+        onClose={() => setClipVideo(null)}
+        sourceUrl={clipVideo ? `https://trends.octane.example/#${clipVideo.id}` : ''}
+        title={clipVideo?.title}
+        platformTarget="tiktok"
+        onSuccess={() => setClipVideo(null)}
+      />
     </div>
   );
 }

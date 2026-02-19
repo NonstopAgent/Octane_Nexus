@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { loadStripe } from '@stripe/stripe-js';
 import { Loader2, Zap, Lock, Sparkles, Target, ArrowRight } from 'lucide-react';
@@ -34,6 +34,14 @@ function extractVibeFromHistory(history: string): string {
 }
 
 export default function LabPage() {
+  return (
+    <Suspense fallback={<div className="flex min-h-screen items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-amber-500" /></div>}>
+      <LabContent />
+    </Suspense>
+  );
+}
+
+function LabContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [niche, setNiche] = useState('');

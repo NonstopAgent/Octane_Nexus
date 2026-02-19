@@ -1,11 +1,13 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, Save, Trash2, Wand2 } from 'lucide-react';
+import { X, Save, Trash2, Wand2, Sparkles, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabaseClient';
 import { POST_STATUS, type PostStatus } from '@/lib/status';
 import { createVersionAction } from '@/actions/create-version';
+import BrainScorecardModal, { type BrainEvalResult } from '@/components/dashboard/BrainScorecardModal';
+import { getPlayableVideoUrl } from '@/lib/playableUrl';
 
 type ScriptContent = {
   hook?: string;
@@ -65,6 +67,9 @@ export default function ScriptEditorModal({
   const [credits, setCredits] = useState<number>(0);
   const [generating, setGenerating] = useState(false);
   const [localPost, setLocalPost] = useState<ContentPost | null>(null);
+  const [brainEval, setBrainEval] = useState<BrainEvalResult | null>(null);
+  const [brainModalOpen, setBrainModalOpen] = useState(false);
+  const [evaluating, setEvaluating] = useState(false);
 
   // Load credits when post (and thus user) is available
   useEffect(() => {
@@ -254,6 +259,34 @@ export default function ScriptEditorModal({
           </select>
           <button
             type="button"
+            onClick={async () => {
+              if (!post) return;
+              setEvaluating(true);
+              try {
+                const res = await fetch('/api/brain/evaluate', {
+                  method: 'POST',
+                  credentials: 'include',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ entityType: 'post', entityId: post.id }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.error || 'Evaluate failed');
+                setBrainEval(data as BrainEvalResult);
+                setBrainModalOpen(true);
+              } catch (e) {
+                toast.error(e instanceof Error ? e.message : 'Evaluate failed');
+              } finally {
+                setEvaluating(false);
+              }
+            }}
+            disabled={evaluating}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-xs font-semibold text-amber-400 hover:bg-amber-500/20 disabled:opacity-50"
+          >
+            {evaluating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+            Evaluate
+          </button>
+          <button
+            type="button"
             onClick={onClose}
             className="p-2 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition"
             aria-label="Close"
@@ -410,18 +443,21 @@ export default function ScriptEditorModal({
                       <audio controls src={displayPost.audio_url} className="w-full h-10 rounded-lg" />
                     </div>
                   )}
-                  {displayPost?.background_video_url && (
-                    <div>
-                      <p className="text-xs text-slate-500 mb-1">Background</p>
-                      <video
-                        controls
-                        className="w-full h-48 object-cover rounded-lg bg-slate-900"
-                        src={displayPost.background_video_url}
-                        muted
-                        playsInline
-                      />
-                    </div>
-                  )}
+                  {displayPost?.background_video_url && (() => {
+                    const playable = getPlayableVideoUrl(displayPost.background_video_url);
+                    return playable ? (
+                      <div>
+                        <p className="text-xs text-slate-500 mb-1">Background</p>
+                        <video
+                          controls
+                          className="w-full h-48 object-cover rounded-lg bg-slate-900"
+                          src={playable}
+                          muted
+                          playsInline
+                        />
+                      </div>
+                    ) : null;
+                  })()}
                 </div>
               )}
             </div>
@@ -481,6 +517,25 @@ export default function ScriptEditorModal({
           )}
         </div>
       </div>
+
+      <BrainScorecardModal
+        isOpen={brainModalOpen}
+        onClose={() => setBrainModalOpen(false)}
+        evalResult={brainEval}
+        onAfterGenerateV2={async () => {
+          onUpdate();
+          if (post) {
+            const { data } = await supabase.from('content_posts').select('script_content, caption').eq('id', post.id).single();
+            if (data) {
+              const sc = (data.script_content as ScriptContent) || {};
+              setHook(sc.hook ?? '');
+              setMeat(Array.isArray(sc.meat) && sc.meat.length > 0 ? [...sc.meat] : ['']);
+              setCta(sc.cta ?? '');
+              setLocalPost((p) => (p ? { ...p, script_content: data.script_content as ScriptContent, caption: data.caption as string } : null));
+            }
+          }
+        }}
+      />
     </div>
   );
 }
