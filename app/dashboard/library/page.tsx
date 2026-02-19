@@ -1,13 +1,17 @@
-import { createServerSupabaseClient } from '@/lib/supabaseServer';
+import { cookies } from 'next/headers';
+import { createServerSupabaseClient, createServiceRoleClient } from '@/lib/supabaseServer';
+import { getEffectiveUserIdFromCookieStore } from '@/lib/authServer';
 import { fetchCreatorVideos } from '@/lib/youtube';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowRight, ExternalLink, Play, Download } from 'lucide-react';
+import { ArrowRight, Download } from 'lucide-react';
 import ToolCard, { type CreatorTool } from '@/components/dashboard/ToolCard';
 import ScrollableRow from '@/components/ui/ScrollableRow';
 import Playbook from '@/components/dashboard/Playbook';
 import LibraryClientSection from '@/components/dashboard/LibraryClientSection';
+import LibraryReadySection from '@/components/dashboard/LibraryReadySection';
 import TacticsGrid from '@/components/dashboard/TacticsGrid';
+import VideoInspirationGrid from '@/components/dashboard/VideoInspirationGrid';
 import SectionHeader from '@/components/ui/SectionHeader';
 import StatusChip from '@/components/ui/StatusChip';
 import DashboardPageHeader from '@/components/dashboard/DashboardPageHeader';
@@ -18,21 +22,24 @@ export const dynamic = 'force-dynamic';
 
 export default async function LibraryPage() {
   const supabase = await createServerSupabaseClient();
-
   const {
     data: { user },
   } = await supabase.auth.getUser();
+  const cookieStore = await cookies();
+  const effectiveUserId = getEffectiveUserIdFromCookieStore(cookieStore, user?.id ?? null);
 
-  if (!user) {
+  if (!effectiveUserId) {
     redirect('/login?returnTo=/dashboard/library');
   }
 
+  const db = user?.id === effectiveUserId ? supabase : createServiceRoleClient();
+
   // 1. Get user niche from profiles
-  const { data: profile } = await supabase
+  const { data: profile } = await db
     .from('profiles')
     .select('niche, profile_image_url')
-    .eq('id', user.id)
-    .single();
+    .eq('id', effectiveUserId)
+    .maybeSingle();
 
   const userNiche = (profile?.niche || 'content creation').toLowerCase().trim();
   const profileImageUrl = profile?.profile_image_url ?? null;
@@ -67,10 +74,10 @@ export default async function LibraryPage() {
     .map(toCreatorTool);
 
   // 3. Check if user has any saved blueprints
-  const { count: blueprintCount } = await supabase
+  const { count: blueprintCount } = await db
     .from('saved_blueprints')
     .select('*', { count: 'exact', head: true })
-    .eq('user_id', user.id);
+    .eq('user_id', effectiveUserId);
 
   // 4. Real videos from YouTube
   const videoQuery = `how to make viral ${userNiche} videos 2026`;
@@ -118,6 +125,9 @@ export default async function LibraryPage() {
       {(blueprintCount ?? 0) === 0 && recommendedTools.length === 0 && (
         <DemoNudge />
       )}
+
+      {/* Ready to Ship - client section with detail modal and copy */}
+      <LibraryReadySection />
 
       {/* Brainstorm + Script It - Client interactive section */}
       <LibraryClientSection userNiche={userNiche} />
@@ -191,47 +201,7 @@ export default async function LibraryPage() {
             }
           />
 
-          {videos.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {videos.map((video) => (
-                <a
-                  key={video.id}
-                  href={`https://www.youtube.com/watch?v=${video.id}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="group relative rounded-xl overflow-hidden bg-slate-900 border border-slate-800 hover:border-amber-500/50 transition-all hover:scale-[1.02]"
-                >
-                  <div className="relative aspect-video bg-slate-800">
-                    {video.thumbnail ? (
-                      <img
-                        src={video.thumbnail}
-                        alt={video.title}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-full h-full bg-slate-800" />
-                    )}
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition">
-                      <div className="rounded-full bg-amber-500 p-3">
-                        <Play className="h-6 w-6 text-slate-950 fill-slate-950" />
-                      </div>
-                    </div>
-                  </div>
-                  <div className="p-3 space-y-1">
-                    <h3 className="text-sm font-semibold text-slate-100 line-clamp-2 group-hover:text-amber-400 transition">
-                      {video.title}
-                    </h3>
-                    <p className="text-xs text-slate-400">{video.channelName}</p>
-                  </div>
-                  <ExternalLink className="absolute top-2 right-2 h-4 w-4 text-white/80 opacity-0 group-hover:opacity-100 transition" />
-                </a>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-12 text-slate-400 text-sm">
-              No videos found. Add YOUTUBE_API_KEY to your env to enable video recommendations.
-            </div>
-          )}
+          <VideoInspirationGrid videos={videos} />
         </div>
       </div>
     </div>
