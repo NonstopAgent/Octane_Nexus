@@ -4,6 +4,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { Users, Eye, Heart, MousePointerClick, TrendingUp, Award, Flame, Target, Instagram, Youtube, ChevronDown, Plus } from 'lucide-react';
 import RealityCheck from '@/components/dashboard/RealityCheck';
 import SystemStatusBanner from '@/components/dashboard/SystemStatusBanner';
+import PostedPostsSection from '@/components/dashboard/PostedPostsSection';
 import {
   ResponsiveContainer,
   AreaChart,
@@ -199,6 +200,8 @@ export default function MonitoringPage() {
           </div>
         </div>
       )}
+      {/* Posted posts with Enter Metrics */}
+      <PostedPostsSection />
       {/* Header with Account Switcher */}
       <div className="flex items-start justify-between">
         <div>

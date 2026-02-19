@@ -1,55 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-import { getEffectiveUserId } from '@/lib/effectiveUser';
-import { POST_STATUS } from '@/lib/constants';
-
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://zdvedfnpipgygvikoooa.supabase.co';
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_1EEA1MtGEqz8vWJAApQM6Q_FnjK-aaw';
-
-export type ContentPost = {
-  id: string;
-  user_id: string;
-  status: string;
-  idea_title?: string;
-  script?: string;
-  hook?: string;
-  beats?: string;
-  cta?: string;
-  caption?: string;
-  hashtags?: string;
-  final_video_url?: string;
-  background_video_url?: string;
-  style_token_id?: string;
-  source_url?: string;
-  scheduled_at?: string;
-  created_at: string;
-  updated_at?: string;
-};
-
-function getEffectiveUserIdFromReq(req: NextRequest, user: { id: string } | null): string | null {
-  const uid = getEffectiveUserId(user?.id ?? null);
-  if (uid) return uid;
-  const demoHeader = req.headers.get('x-demo-mode') === 'true';
-  const demoCookie = req.cookies.get('octane_demo_mode')?.value === 'true';
-  return demoHeader || demoCookie ? 'demo_user_mvp_v1' : null;
-}
+import { createServerSupabaseClient, createServiceRoleClient } from '@/lib/supabaseServer';
+import { getEffectiveUserIdFromRequest } from '@/lib/authServer';
+import { POST_STATUS } from '@/lib/postStatus';
 
 export async function GET(req: NextRequest) {
   try {
-    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const supabase = await createServerSupabaseClient();
     const { data: { user } } = await supabase.auth.getUser();
-    const effectiveUserId = getEffectiveUserIdFromReq(req, user);
-    if (!effectiveUserId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const userId = getEffectiveUserIdFromRequest(req, user?.id ?? null);
+    if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+    const db = user?.id === userId ? supabase : createServiceRoleClient();
     const { searchParams } = new URL(req.url);
     const status = searchParams.get('status');
 
-    let query = supabase.from('content_posts').select('*').eq('user_id', effectiveUserId);
+    let query = db.from('content_posts').select('*').eq('user_id', userId);
     if (status) query = query.eq('status', status);
     const { data, error } = await query.order('updated_at', { ascending: false });
 
     if (error) {
-      // Table may not exist; return empty for now (demo will use localStorage fallback in UI)
+      console.error('posts GET error:', error);
       return NextResponse.json({ posts: [] });
     }
     return NextResponse.json({ posts: data || [] });
@@ -61,38 +31,33 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const supabase = await createServerSupabaseClient();
     const { data: { user } } = await supabase.auth.getUser();
-    const effectiveUserId = getEffectiveUserIdFromReq(req, user);
-    if (!effectiveUserId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const userId = getEffectiveUserIdFromRequest(req, user?.id ?? null);
+    if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+    const db = user?.id === userId ? supabase : createServiceRoleClient();
     const body = await req.json().catch(() => ({}));
-    const { idea_title, status = POST_STATUS.IDEA } = body;
 
-    const row = {
-      user_id: effectiveUserId,
-      status,
-      idea_title: idea_title || 'Untitled idea',
-      script: body.script || null,
-      hook: body.hook || null,
-      beats: body.beats || null,
-      cta: body.cta || null,
+    const row: Record<string, unknown> = {
+      user_id: userId,
+      title: body.title || body.idea_title || 'Untitled idea',
+      status: body.status || POST_STATUS.IDEA,
+      script_content: body.script_content || null,
       caption: body.caption || null,
       hashtags: body.hashtags || null,
       final_video_url: body.final_video_url || null,
       background_video_url: body.background_video_url || null,
       style_token_id: body.style_token_id || null,
       source_url: body.source_url || null,
-      scheduled_at: body.scheduled_at || null,
+      scheduled_date: body.scheduled_date || body.scheduled_at || null,
+      platform: body.platform || null,
     };
 
-    const { data, error } = await supabase.from('content_posts').insert(row).select().single();
+    const { data, error } = await db.from('content_posts').insert(row).select().single();
     if (error) {
-      // Table may not exist
-      const id = `post_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-      return NextResponse.json({
-        post: { ...row, id, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
-      });
+      console.error('posts POST insert error:', error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
     }
     return NextResponse.json({ post: data });
   } catch (err) {

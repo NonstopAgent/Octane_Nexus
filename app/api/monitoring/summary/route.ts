@@ -1,68 +1,55 @@
 import { NextRequest, NextResponse } from 'next/server';
-
-export const dynamic = 'force-dynamic';
-import { createClient } from '@supabase/supabase-js';
-import { getEffectiveUserId } from '@/lib/effectiveUser';
-
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://zdvedfnpipgygvikoooa.supabase.co';
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_1EEA1MtGEqz8vWJAApQM6Q_FnjK-aaw';
+import { createServerSupabaseClient, createServiceRoleClient } from '@/lib/supabaseServer';
+import { getEffectiveUserIdFromRequest } from '@/lib/authServer';
 
 export async function GET(req: NextRequest) {
   try {
-    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const supabase = await createServerSupabaseClient();
     const { data: { user } } = await supabase.auth.getUser();
-    const demoHeader = req.headers.get('x-demo-mode') === 'true';
-    const demoCookie = req.cookies.get('octane_demo_mode')?.value === 'true';
-    const effectiveUserId = getEffectiveUserId(user?.id ?? null) ?? (demoHeader || demoCookie ? 'demo_user_mvp_v1' : null);
+    const userId = getEffectiveUserIdFromRequest(req, user?.id ?? null);
 
-    if (!effectiveUserId) {
+    if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Summary cards: posts this week, scheduled, posted, streak
-    let summary = {
-      postsThisWeek: 0,
-      scheduled: 0,
-      posted: 0,
-      streak: 0,
-    };
+    const db = user?.id === userId ? supabase : createServiceRoleClient();
+
+    const summary = { postsThisWeek: 0, scheduled: 0, posted: 0, streak: 0 };
 
     try {
-      const { data: profile } = await supabase
+      const { data: profile } = await db
         .from('profiles')
         .select('streak_count')
-        .eq('id', effectiveUserId)
+        .eq('id', userId)
         .maybeSingle();
-
       if (profile?.streak_count != null) {
         summary.streak = Number(profile.streak_count) || 0;
       }
     } catch {
-      // ignore
+      // profiles may not exist for demo user
     }
 
     try {
-      const { data: posts } = await supabase
+      const { data: posts } = await db
         .from('content_posts')
-        .select('status, created_at, scheduled_at')
-        .eq('user_id', effectiveUserId);
+        .select('status, posted_at, created_at')
+        .eq('user_id', userId);
 
       if (Array.isArray(posts)) {
         const now = new Date();
         const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
         for (const p of posts) {
           const status = (p?.status as string) || '';
-          const createdAt = p?.created_at ? new Date(p.created_at) : null;
           if (status === 'scheduled') summary.scheduled++;
           if (status === 'posted') summary.posted++;
-          if (createdAt && createdAt >= weekAgo) summary.postsThisWeek++;
+          const postedAt = p?.posted_at ? new Date(p.posted_at as string) : null;
+          const createdAt = p?.created_at ? new Date(p.created_at as string) : null;
+          const refDate = postedAt ?? createdAt;
+          if (status === 'posted' && refDate && refDate >= weekAgo) summary.postsThisWeek++;
         }
       }
     } catch {
-      // content_posts may not exist; use demo mock
-      if (effectiveUserId === 'demo_user_mvp_v1') {
-        summary = { postsThisWeek: 3, scheduled: 2, posted: 5, streak: 7 };
-      }
+      // Table may not exist in demo mode without DB
     }
 
     return NextResponse.json(summary);

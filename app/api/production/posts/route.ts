@@ -1,47 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient, createServiceRoleClient } from '@/lib/supabaseServer';
 import { getEffectiveUserIdFromRequest } from '@/lib/authServer';
+import { listPosts } from '@/lib/postsRepo';
 import { resolvePostVideoFields } from '@/lib/media-resolver';
 
-/**
- * GET: List content_posts for the effective user.
- * Returns final_video_path + final_video_url (signed), background_video_path + background_video_url (signed).
- */
 export async function GET(req: NextRequest) {
   try {
     const supabase = await createServerSupabaseClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const { data: { user } } = await supabase.auth.getUser();
     const userId = getEffectiveUserIdFromRequest(req, user?.id ?? null);
+    if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    if (!userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const client = user?.id === userId ? supabase : createServiceRoleClient();
-    const { data, error } = await client
-      .from('content_posts')
-      .select('*')
-      .eq('user_id', userId)
-      .order('updated_at', { ascending: false });
-
-    if (error) {
-      console.error('production/posts error:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
+    const db = user?.id === userId ? supabase : createServiceRoleClient();
+    const posts = await listPosts(db, userId);
 
     const service = createServiceRoleClient();
-    const posts = await Promise.all((data ?? []).map(async (p: Record<string, unknown>) => {
-      const resolved = await resolvePostVideoFields(
-        (p.final_video_url as string) ?? null,
-        (p.background_video_url as string) ?? null,
-        service
-      );
-      return { ...p, ...resolved };
-    }));
+    const resolved = await Promise.all(
+      posts.map(async (p) => {
+        const urls = await resolvePostVideoFields(
+          p.final_video_url ?? null,
+          p.background_video_url ?? null,
+          service
+        );
+        return { ...p, ...urls };
+      })
+    );
 
-    return NextResponse.json(posts ?? []);
+    return NextResponse.json(resolved);
   } catch (e) {
     console.error('production/posts error:', e);
     return NextResponse.json(

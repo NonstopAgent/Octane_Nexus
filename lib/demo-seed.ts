@@ -215,3 +215,51 @@ export function getNextWeekIso(): string {
   d.setHours(14, 0, 0, 0);
   return d.toISOString();
 }
+
+const STYLE_PRESETS = [
+  {
+    name: 'Direct',
+    tokens: {
+      caption_style: { maxLines: 5 },
+      intro_pattern: { enabled: true, textTemplate: 'Here\'s what you need to know about {title}.' },
+      cta_pattern: { enabled: true, template: 'Follow for more.' },
+      pacing: { maxSentenceLength: 20 },
+    },
+  },
+  {
+    name: 'Hype',
+    tokens: {
+      caption_style: { maxLines: 8 },
+      intro_pattern: { enabled: true, textTemplate: 'STOP scrolling — {title} 🔥' },
+      cta_pattern: { enabled: true, template: 'Drop a 🔥 if you agree!' },
+      pacing: { maxSentenceLength: 15 },
+    },
+  },
+  {
+    name: 'Calm',
+    tokens: {
+      caption_style: { maxLines: 6 },
+      intro_pattern: { enabled: true, textTemplate: 'A quick thought on {title}.' },
+      cta_pattern: { enabled: true, template: 'Save this for later.' },
+      pacing: { maxSentenceLength: 25 },
+    },
+  },
+  {
+    name: 'Authority',
+    tokens: {
+      caption_style: { maxLines: 4 },
+      intro_pattern: { enabled: true, textTemplate: 'The truth about {title} (from someone who\'s done it).' },
+      cta_pattern: { enabled: true, template: 'DM "START" for my free guide.' },
+      pacing: { maxSentenceLength: 18 },
+    },
+  },
+];
+
+export function buildDemoStyleTokens(userId: string): Array<Record<string, unknown>> {
+  return STYLE_PRESETS.map((p, i) => ({
+    user_id: userId,
+    name: `[DEMO] ${p.name}`,
+    tokens: p.tokens,
+    is_default: i === 0,
+  }));
+}
