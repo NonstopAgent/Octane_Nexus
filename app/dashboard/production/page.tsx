@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { LayoutGrid, Loader2, GripVertical, ArrowRight } from 'lucide-react';
 import SystemStatusBanner from '@/components/dashboard/SystemStatusBanner';
 import { POST_STATUS } from '@/lib/constants';
-import { getStoredPosts, setStoredPosts, updateStoredPost, type StoredPost } from '@/lib/creatorStore';
+import { getStoredPosts, updateStoredPost, type StoredPost } from '@/lib/creatorStore';
 
 const STATUS_ORDER = [POST_STATUS.IDEA, POST_STATUS.SCRIPTING, POST_STATUS.FILMING, POST_STATUS.READY];
 

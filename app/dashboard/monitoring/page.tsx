@@ -144,7 +144,8 @@ export default function MonitoringPage() {
   const milestones = useMemo(() => getMilestones(selectedAccountId), [selectedAccountId]);
 
   // Custom tooltip for the chart
-  const CustomTooltip = ({ active, payload }: any) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: any[] }) => {
     if (active && payload && payload.length) {
       return (
         <div className="rounded-lg border border-slate-800 bg-slate-950 p-3 shadow-xl">

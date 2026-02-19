@@ -75,7 +75,6 @@ export type VisionBios = {
   mystery: string[];
 };
 
-<<<<<<< Current (Your changes)
 export type IdeaAnalysis = {
   viralScore: number;
   prediction: string;
@@ -138,13 +137,6 @@ export type VideoScriptVariation = {
   meat: string[];
   cta: string;
   setup_tip: string;
-=======
-export type VideoBlueprint = { hook: string; meat: string[]; cta: string; setup_tip?: string };
-export type PlatformSpecificBlueprints = {
-  tiktok?: { hook: string; meat: string[]; cta: string; setup_tip?: string };
-  instagram?: { hook: string; meat: string[]; cta: string; setup_tip?: string };
-  x?: { hook: string; meat: string[]; cta: string; setup_tip?: string };
->>>>>>> Incoming (Background Agent changes)
 };
 
 // --- Context & History Helpers ---

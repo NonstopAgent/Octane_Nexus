@@ -16,7 +16,7 @@ export default function ClipStudioPage() {
   const [duration, setDuration] = useState(10);
   const [clipping, setClipping] = useState(false);
   const [clipBlobUrl, setClipBlobUrl] = useState<string | null>(null);
-  const [rightsWarning, setRightsWarning] = useState(false);
+  const [, setRightsWarning] = useState(false);
   const [rightsAck, setRightsAck] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
 

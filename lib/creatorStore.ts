@@ -3,8 +3,6 @@
  * When content_posts table doesn't exist or API returns empty, UI can use this.
  */
 
-import { POST_STATUS } from './constants';
-
 export type StoredPost = {
   id: string;
   user_id: string;

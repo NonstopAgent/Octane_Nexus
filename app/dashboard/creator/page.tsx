@@ -38,7 +38,7 @@ export default function CreatorDailyLoopPage() {
         const data = await res.json();
         setPipeline(data.pipeline || {});
         setTopActions(data.topActions || []);
-      } catch (err) {
+      } catch {
         setError('Could not load creator pipeline.');
       } finally {
         setLoading(false);

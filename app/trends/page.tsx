@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import Link from 'next/link';
 import { TrendingUp, Search, Filter, Hash, Sparkles, Send } from 'lucide-react';
 import { getTrendingHashtags, getTrendingByCategory, searchTrendingHashtags, type Platform, type TrendingHashtag } from '@/lib/trends';
 import { POST_STATUS } from '@/lib/constants';

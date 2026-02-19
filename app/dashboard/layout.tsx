@@ -3,11 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-<<<<<<< Current (Your changes)
-import { UserCircle, BookOpen, BarChart3, Settings, MessageCircle, Sparkles, CalendarDays, LayoutGrid, TrendingUp, Scissors } from 'lucide-react';
-=======
-import { UserCircle, BookOpen, BarChart3, Settings, MessageCircle, Sparkles, CalendarDays, Zap } from 'lucide-react';
->>>>>>> Incoming (Background Agent changes)
+import { UserCircle, BookOpen, BarChart3, Settings, MessageCircle, Sparkles, CalendarDays, LayoutGrid, TrendingUp, Scissors, Zap } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { getCalibrationLevel } from '@/lib/gemini';
 import CreatorDailyBar from '@/components/dashboard/CreatorDailyBar';

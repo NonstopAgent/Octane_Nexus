@@ -5,6 +5,27 @@ import { createClient } from '@supabase/supabase-js';
 import { getEffectiveUserId } from '@/lib/effectiveUser';
 import { POST_STATUS } from '@/lib/constants';
 
+export type NextBestAction =
+  | 'film'
+  | 'finish_script'
+  | 'turn_idea_into_script'
+  | 'grab_trend'
+  | 'review_performance';
+
+export type CreatorTodayPayload = {
+  ideasCount: number;
+  scriptingCount: number;
+  readyCount: number;
+  scheduledCount: number;
+  lastPostAt: string | null;
+  streakCount: number;
+  xp: number;
+  hasPostedToday: boolean;
+  nextBestAction: NextBestAction;
+  pipeline?: Record<string, number>;
+  topActions?: { label: string; href: string; cta: string }[];
+};
+
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://zdvedfnpipgygvikoooa.supabase.co';
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_1EEA1MtGEqz8vWJAApQM6Q_FnjK-aaw';
 
@@ -65,7 +86,29 @@ export async function GET(req: NextRequest) {
       { label: 'Schedule 1 ready post', href: '/dashboard/schedule', cta: 'Schedule' },
     ];
 
-    return NextResponse.json({ pipeline, topActions });
+    const hasPostedToday = counts.posted > 0;
+    let nextBestAction: NextBestAction;
+    if (hasPostedToday) nextBestAction = 'review_performance';
+    else if (counts.ready > 0) nextBestAction = 'film';
+    else if (counts.scripting > 0) nextBestAction = 'finish_script';
+    else if (counts.idea > 0) nextBestAction = 'turn_idea_into_script';
+    else nextBestAction = 'grab_trend';
+
+    const payload: CreatorTodayPayload = {
+      ideasCount: counts.idea,
+      scriptingCount: counts.scripting,
+      readyCount: counts.ready + counts.filming,
+      scheduledCount: counts.scheduled,
+      lastPostAt: null,
+      streakCount: 0,
+      xp: 0,
+      hasPostedToday,
+      nextBestAction,
+      pipeline,
+      topActions,
+    };
+
+    return NextResponse.json(payload);
   } catch (err) {
     console.error('creator/today error:', err);
     return NextResponse.json({ error: 'Internal error' }, { status: 500 });

@@ -169,8 +169,10 @@ function LibraryContent() {
 
     try {
       const ideas = blueprints.map((bp) => bp.idea);
-      const note = ideas.join('\n');
-      const result = await generateLibrarianInsight(note);
+      const result = await generateLibrarianInsight({
+        savedIdeas: ideas,
+        userName: fullName || undefined,
+      });
       setInsight(result);
     } catch (err: unknown) {
       setInsightError(

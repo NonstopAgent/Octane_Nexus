@@ -164,9 +164,9 @@ export default function LabPage() {
         userId: user?.id,
       });
       setIdeas(nextIdeas);
-    } catch (err: any) {
+    } catch (err: unknown) {
       setError(
-        err?.message ||
+        err instanceof Error ? err.message :
           "Couldn't generate ideas right now. Try again in a moment with a simple niche description."
       );
     } finally {
@@ -203,15 +203,11 @@ export default function LabPage() {
         // Still try to generate without user ID
       }
 
-      // Generate platform-specific blueprints from Gemini (returns text; parse or use as fallback)
-      const result = await generatePlatformSpecificBlueprints(idea);
-      // API returns string; create a minimal PlatformSpecificBlueprints for display
-      const fallback: PlatformSpecificBlueprints = {
-        tiktok: { hook: result.slice(0, 120) || idea, meat: [result], cta: 'Follow for more.', setup_tip: '' },
-        instagram: { hook: result.slice(0, 120) || idea, meat: [result], cta: 'Follow for more.', setup_tip: '' },
-        x: { hook: result.slice(0, 120) || idea, meat: [result], cta: 'Follow for more.', setup_tip: '' },
-      };
-      setPlatformBlueprints(fallback);
+      const result = await generatePlatformSpecificBlueprints({
+        idea,
+        userId: user?.id,
+      });
+      setPlatformBlueprints(result);
       setSelectedPlatform('tiktok'); // Default to TikTok
 
       // Persist all three platform blueprints to Supabase for later retrieval
@@ -221,7 +217,7 @@ export default function LabPage() {
           .insert({
             user_id: user.id,
             idea,
-            blueprint: fallback,
+            blueprint: result,
           });
 
         if (insertError) {
@@ -233,9 +229,9 @@ export default function LabPage() {
           }
         }
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       setBlueprintError(
-        err?.message ||
+        err instanceof Error ? err.message :
           'Could not generate platform-specific blueprints right now. Try again in a moment.'
       );
     } finally {
@@ -270,10 +266,10 @@ export default function LabPage() {
       if (redirectError) {
         throw redirectError;
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error initiating checkout:', err);
       setBlueprintError(
-        err?.message || 'Failed to start checkout. Please try again.'
+        err instanceof Error ? err.message : 'Failed to start checkout. Please try again.'
       );
       setCheckoutLoading(false);
     }
@@ -288,7 +284,6 @@ export default function LabPage() {
     );
   }
 
-  const hasVaultAccess = purchasedPackageType === 'vault';
   if (!hasPurchasedPackage) {
     return (
       <main className="mx-auto flex min-h-screen max-w-5xl flex-col gap-8 px-4 py-10 text-slate-50">
@@ -391,12 +386,12 @@ export default function LabPage() {
             <div className="flex flex-col items-center gap-3">
               {isLocalhost() && (
                 <button
-                  onClick={() => {
+                  onClick={async () => {
                     setBypassLoading(true);
+                    await new Promise((r) => setTimeout(r, 300));
                     setHasPurchasedPackage(true);
                     setPurchasedPackageType('vault');
                     setBypassLoading(false);
-                    console.log('Bypassed auth on localhost - package access granted');
                   }}
                   disabled={bypassLoading}
                   className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-xl border-2 border-emerald-500/50 bg-emerald-500/10 px-4 text-sm font-semibold text-emerald-400 transition-all hover:border-emerald-500 hover:bg-emerald-500/20 disabled:cursor-not-allowed"
