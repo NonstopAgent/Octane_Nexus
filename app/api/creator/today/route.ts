@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerSupabaseClient, createServiceRoleClient } from '@/lib/supabaseServer';
-import { getEffectiveUserIdFromRequest } from '@/lib/authServer';
+
+export const dynamic = 'force-dynamic';
+import { createClient } from '@supabase/supabase-js';
+import { getEffectiveUserId } from '@/lib/effectiveUser';
+import { POST_STATUS } from '@/lib/constants';
 
 export type NextBestAction =
   | 'film'
@@ -19,111 +22,95 @@ export type CreatorTodayPayload = {
   xp: number;
   hasPostedToday: boolean;
   nextBestAction: NextBestAction;
+  pipeline?: Record<string, number>;
+  topActions?: { label: string; href: string; cta: string }[];
 };
+
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://zdvedfnpipgygvikoooa.supabase.co';
+const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_1EEA1MtGEqz8vWJAApQM6Q_FnjK-aaw';
 
 export async function GET(req: NextRequest) {
   try {
-    const supabase = await createServerSupabaseClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    const userId = getEffectiveUserIdFromRequest(req, user?.id ?? null);
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const { data: { user } } = await supabase.auth.getUser();
+    // Demo mode: allow unauthenticated when x-demo-mode header or cookie present
+    const demoHeader = req.headers.get('x-demo-mode') === 'true';
+    const demoCookie = req.cookies.get('octane_demo_mode')?.value === 'true';
+    const effectiveUserId = getEffectiveUserId(user?.id ?? null) ?? (demoHeader || demoCookie ? 'demo_user_mvp_v1' : null);
 
-    if (!userId) {
+    if (!effectiveUserId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const db = user?.id === userId ? supabase : createServiceRoleClient();
+    // Try content_posts table; fallback to mock counts for demo
+    let counts = {
+      idea: 0,
+      scripting: 0,
+      filming: 0,
+      ready: 0,
+      scheduled: 0,
+      posted: 0,
+    };
 
-    // Parallel queries for speed
-    const [ideasRes, scriptingRes, readyRes, scheduledRes, profileRes, lastPostRes] =
-      await Promise.all([
-        db
-          .from('content_posts')
-          .select('*', { count: 'exact', head: true })
-          .eq('user_id', userId)
-          .eq('status', 'idea'),
-        db
-          .from('content_posts')
-          .select('*', { count: 'exact', head: true })
-          .eq('user_id', userId)
-          .eq('status', 'scripting'),
-        db
-          .from('content_posts')
-          .select('*', { count: 'exact', head: true })
-          .eq('user_id', userId)
-          .in('status', ['ready', 'filming']),
-        db
-          .from('content_posts')
-          .select('*', { count: 'exact', head: true })
-          .eq('user_id', userId)
-          .eq('status', 'scheduled'),
-        db
-          .from('profiles')
-          .select('streak_count, last_post_date, xp')
-          .eq('id', userId)
-          .maybeSingle(),
-        db
-          .from('instagram_posts')
-          .select('posted_at')
-          .eq('user_id', userId)
-          .not('posted_at', 'is', null)
-          .order('posted_at', { ascending: false })
-          .limit(1),
-      ]);
+    try {
+      const { data: posts, error } = await supabase
+        .from('content_posts')
+        .select('status')
+        .eq('user_id', effectiveUserId);
 
-    const ideasCount = ideasRes.count ?? 0;
-    const scriptingCount = scriptingRes.count ?? 0;
-    const readyCount = readyRes.count ?? 0;
-    const scheduledCount = scheduledRes.count ?? 0;
-    const streakCount =
-      typeof profileRes.data?.streak_count === 'number'
-        ? profileRes.data.streak_count
-        : 0;
-    const xp = typeof profileRes.data?.xp === 'number' ? profileRes.data.xp : 0;
-    const lastPostAt =
-      lastPostRes.data && lastPostRes.data.length > 0
-        ? (lastPostRes.data[0].posted_at as string)
-        : null;
-
-    // Determine if creator posted today
-    const todayDate = new Date().toDateString();
-    const lastPostDate = profileRes.data?.last_post_date
-      ? new Date(profileRes.data.last_post_date as string)
-      : null;
-    const hasPostedToday = lastPostDate !== null && lastPostDate.toDateString() === todayDate;
-
-    let nextBestAction: NextBestAction;
-    if (hasPostedToday) {
-      nextBestAction = 'review_performance';
-    } else if (readyCount > 0) {
-      nextBestAction = 'film';
-    } else if (scriptingCount > 0) {
-      nextBestAction = 'finish_script';
-    } else if (ideasCount > 0) {
-      nextBestAction = 'turn_idea_into_script';
-    } else {
-      nextBestAction = 'grab_trend';
+      if (!error && Array.isArray(posts)) {
+        for (const p of posts) {
+          const s = (p?.status as string) || '';
+          if (s in counts) (counts as Record<string, number>)[s]++;
+        }
+      }
+    } catch {
+      // Table may not exist; use mock for demo
+      if (effectiveUserId === 'demo_user_mvp_v1') {
+        counts = { idea: 2, scripting: 1, filming: 1, ready: 3, scheduled: 2, posted: 5 };
+      }
     }
 
+    const pipeline = {
+      [POST_STATUS.IDEA]: counts.idea,
+      [POST_STATUS.SCRIPTING]: counts.scripting,
+      [POST_STATUS.FILMING]: counts.filming,
+      [POST_STATUS.READY]: counts.ready,
+      [POST_STATUS.SCHEDULED]: counts.scheduled,
+      [POST_STATUS.POSTED]: counts.posted,
+    };
+
+    const topActions = [
+      { label: 'Pick 1 idea from Trends', href: '/trends', cta: 'Go to Trends' },
+      { label: 'Move 1 post to Ready', href: '/dashboard/production', cta: 'Production Board' },
+      { label: 'Schedule 1 ready post', href: '/dashboard/schedule', cta: 'Schedule' },
+    ];
+
+    const hasPostedToday = counts.posted > 0;
+    let nextBestAction: NextBestAction;
+    if (hasPostedToday) nextBestAction = 'review_performance';
+    else if (counts.ready > 0) nextBestAction = 'film';
+    else if (counts.scripting > 0) nextBestAction = 'finish_script';
+    else if (counts.idea > 0) nextBestAction = 'turn_idea_into_script';
+    else nextBestAction = 'grab_trend';
+
     const payload: CreatorTodayPayload = {
-      ideasCount,
-      scriptingCount,
-      readyCount,
-      scheduledCount,
-      lastPostAt,
-      streakCount,
-      xp,
+      ideasCount: counts.idea,
+      scriptingCount: counts.scripting,
+      readyCount: counts.ready + counts.filming,
+      scheduledCount: counts.scheduled,
+      lastPostAt: null,
+      streakCount: 0,
+      xp: 0,
       hasPostedToday,
       nextBestAction,
+      pipeline,
+      topActions,
     };
 
     return NextResponse.json(payload);
-  } catch (e) {
-    console.error('creator/today error:', e);
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : 'Server error' },
-      { status: 500 }
-    );
+  } catch (err) {
+    console.error('creator/today error:', err);
+    return NextResponse.json({ error: 'Internal error' }, { status: 500 });
   }
 }

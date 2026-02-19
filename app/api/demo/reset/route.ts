@@ -57,16 +57,15 @@ export async function POST() {
       }
     }
 
-    // 4) Remove demo_seeded_ids for this user
+    // 4) Remove demo_seeded_ids and demo style tokens for this user
     await supabase.from('demo_seeded_ids').delete().eq('user_id', userId);
+    await supabase.from('style_tokens').delete().eq('user_id', userId).like('name', '[DEMO]%');
 
-    // 5) Remove demo linked account if present
-    const { data: profile } = await supabase.from('profiles').select('linked_accounts').eq('id', userId).maybeSingle();
-    const linked = (profile?.linked_accounts as Record<string, string> | null) ?? {};
-    if (linked.instagram === '@demo_user') {
-      const rest = Object.fromEntries(Object.entries(linked).filter(([k]) => k !== 'instagram'));
-      await supabase.from('profiles').update({ linked_accounts: rest }).eq('id', userId);
-    }
+    // 5) Clean up demo brand identity (but don't touch linked_accounts — demo never fakes connections)
+    await supabase.from('profiles')
+      .update({ brand_vision: null, niche: null })
+      .eq('id', userId)
+      .eq('brand_vision', 'Tradeview AI — AI-powered trading insights');
 
     return NextResponse.json({ success: true });
   } catch (e) {

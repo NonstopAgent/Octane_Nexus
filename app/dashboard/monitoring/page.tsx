@@ -1,16 +1,11 @@
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
-import Link from 'next/link';
-import { Users, Eye, Heart, MousePointerClick, TrendingUp, Award, Flame, Target, Instagram, Youtube, ChevronDown, Plus, Loader2, Twitter, Music2, BarChart3 } from 'lucide-react';
+import { Users, Eye, Heart, MousePointerClick, TrendingUp, Award, Flame, Target, Instagram, Youtube, ChevronDown, Plus } from 'lucide-react';
 import RealityCheck from '@/components/dashboard/RealityCheck';
-import { supabase } from '@/lib/supabaseClient';
-import { fetchSocialStats, type Platform } from '@/lib/social-intelligence';
-import { SkeletonCardGrid } from '@/components/ui/SkeletonCard';
-import EmptyState from '@/components/ui/EmptyState';
-import StatusChip from '@/components/ui/StatusChip';
-import DashboardPageHeader from '@/components/dashboard/DashboardPageHeader';
-import DemoNudge from '@/components/ui/DemoNudge';
+import SystemStatusBanner from '@/components/dashboard/SystemStatusBanner';
+import PostedPostsSection from '@/components/dashboard/PostedPostsSection';
+import { getDisplayHandle } from '@/lib/linkedAccounts';
 import {
   ResponsiveContainer,
   AreaChart,
@@ -23,13 +18,19 @@ import {
 
 type ConnectedAccount = {
   id: string;
-  platform: 'Instagram' | 'YouTube' | 'TikTok' | 'X';
+  platform: 'Instagram' | 'YouTube';
   handle: string;
+  connected: boolean;
   followers?: string;
   subscribers?: string;
-  platformKey: Platform;
 };
 
+const EMPTY_ACCOUNTS: ConnectedAccount[] = [
+  { id: 'ig_1', platform: 'Instagram', handle: '', connected: false },
+  { id: 'yt_1', platform: 'YouTube', handle: '', connected: false },
+];
+
+// Mock Stats Data (different for each account)
 type AccountStats = {
   followers: number;
   followersChange: number;
@@ -41,41 +42,55 @@ type AccountStats = {
   clicksChange: number;
 };
 
-type HistoryRow = { id: string; platform: string; follower_count: number; recorded_at: string };
+const STATS_DATA: Record<string, AccountStats> = {
+  'ig_1': {
+    followers: 12500,
+    followersChange: 12,
+    reach: 84320,
+    reachChange: 18,
+    engagement: 4.2,
+    engagementChange: 5,
+    clicks: 567,
+    clicksChange: 23,
+  },
+  'yt_1': {
+    followers: 4200,
+    followersChange: 25,
+    reach: 125000,
+    reachChange: 30,
+    engagement: 6.8,
+    engagementChange: 8,
+    clicks: 1234,
+    clicksChange: 35,
+  },
+};
 
-function buildChartDataFromHistory(history: HistoryRow[]): { date: string; followers: number }[] {
-  if (!history.length) return [];
-  const byDate = new Map<string, number>();
-  const byTime = new Map<string, number>();
-  for (const row of history) {
-    const d = new Date(row.recorded_at);
-    const key = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    byDate.set(key, row.follower_count);
-    byTime.set(key, d.getTime());
-  }
-  const sorted = [...byDate.entries()].sort((a, b) => (byTime.get(a[0]) ?? 0) - (byTime.get(b[0]) ?? 0));
-  return sorted.map(([date, followers]) => ({ date, followers }));
-}
-
-function backfillChartData(
-  currentStats: { followers: number },
-  platformKey: Platform
-): { date: string; followers: number }[] {
-  const data: { date: string; followers: number }[] = [];
+// Generate growth data for specific account (different curves)
+function generateGrowthData(accountId: string) {
+  const data = [];
   const startDate = new Date();
-  startDate.setDate(startDate.getDate() - 29);
-  const finalFollowers = currentStats.followers;
-  const curve = platformKey === 'youtube' ? 1.8 : 1.5;
+  startDate.setDate(startDate.getDate() - 29); // 30 days ago
+
+  // Different growth curves based on account
+  const isInstagram = accountId === 'ig_1';
+  const finalFollowers = isInstagram ? 12500 : 4200;
+  const curve = isInstagram ? 1.5 : 1.8; // Different growth rates
+
   for (let i = 0; i < 30; i++) {
     const date = new Date(startDate);
     date.setDate(date.getDate() + i);
-    const progress = i / 29;
+    
+    const progress = i / 29; // 0 to 1
     const followers = Math.round(finalFollowers * Math.pow(progress, curve));
+    
     data.push({
       date: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
       followers,
+      reach: Math.round(followers * (isInstagram ? 6.7 : 29.8)), // Instagram vs YouTube reach multiplier
+      engagement: Math.round((isInstagram ? 3 + Math.random() * 2 : 5 + Math.random() * 3) * 10) / 10,
     });
   }
+
   return data;
 }
 
@@ -107,179 +122,47 @@ function getMilestones(accountId: string): Milestone[] {
   }
 }
 
-
-function SkeletonChart() {
-  const bars = 12;
-  return (
-    <div className="h-[400px] w-full flex flex-col justify-end gap-1 px-2 pb-8" role="status" aria-label="Loading chart">
-      <div className="flex-1 flex items-end justify-around gap-1">
-        {Array.from({ length: bars }).map((_, i) => (
-          <div
-            key={i}
-            className="flex-1 max-w-[24px] rounded-t bg-slate-800 animate-pulse"
-            style={{ height: `${30 + (i % 5) * 14}%` }}
-          />
-        ))}
-      </div>
-      <div className="flex justify-between mt-2 px-1 text-[10px] text-slate-600">
-        <span>—</span>
-        <span>—</span>
-        <span>—</span>
-      </div>
-    </div>
-  );
-}
-
-function linkedAccountsToConnected(linked: Record<string, string | null>): ConnectedAccount[] {
-  const out: ConnectedAccount[] = [];
-  const map: { key: keyof typeof linked; platform: ConnectedAccount['platform']; platformKey: Platform }[] = [
-    { key: 'instagram', platform: 'Instagram', platformKey: 'instagram' },
-    { key: 'tiktok', platform: 'TikTok', platformKey: 'tiktok' },
-    { key: 'youtube', platform: 'YouTube', platformKey: 'youtube' },
-    { key: 'x', platform: 'X', platformKey: 'x' },
-  ];
-  for (const { key, platform, platformKey } of map) {
-    const handle = linked[key] || linked[key.charAt(0).toUpperCase() + key.slice(1)];
-    if (handle && typeof handle === 'string') {
-      const h = handle.startsWith('@') ? handle : `@${handle}`;
-      out.push({
-        id: `${platformKey}:${h}`,
-        platform,
-        handle: h,
-        followers: undefined,
-        subscribers: platform === 'YouTube' ? undefined : undefined,
-        platformKey,
-      });
-    }
-  }
-  return out;
-}
+type SummaryData = { postsThisWeek?: number; scheduled?: number; posted?: number; streak?: number };
 
 export default function MonitoringPage() {
-  const [connectedAccounts, setConnectedAccounts] = useState<ConnectedAccount[]>([]);
-  const [selectedAccountId, setSelectedAccountId] = useState<string>('');
+  const [accounts, setAccounts] = useState<ConnectedAccount[]>(EMPTY_ACCOUNTS);
+  const [selectedAccountId, setSelectedAccountId] = useState<string>(EMPTY_ACCOUNTS[0]?.id || '');
   const [isDropdownOpen, setIsDropdownOpen] = useState<boolean>(false);
-  const [historyRows, setHistoryRows] = useState<HistoryRow[]>([]);
-  const [stats, setStats] = useState<AccountStats | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [recording, setRecording] = useState(false);
-
-  const selectedAccount = connectedAccounts.find((acc) => acc.id === selectedAccountId);
-  const platformKey = selectedAccount?.platformKey ?? 'instagram';
-
-  const chartData = useMemo(() => {
-    const filtered = historyRows.filter((r) => r.platform === platformKey);
-    if (filtered.length > 0) {
-      return buildChartDataFromHistory(filtered);
-    }
-    if (stats) {
-      return backfillChartData({ followers: stats.followers }, platformKey);
-    }
-    return [];
-  }, [historyRows, platformKey, stats]);
-
-  const milestones = useMemo(() => getMilestones(platformKey), [platformKey]);
+  const [summary, setSummary] = useState<SummaryData | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user || cancelled) return;
+    fetch('/api/monitoring/summary', { credentials: 'include' })
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => d && setSummary(d))
+      .catch(() => {});
 
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('linked_accounts')
-        .eq('id', user.id)
-        .maybeSingle();
-
-      if (cancelled) return;
-      const linked = (profile?.linked_accounts as Record<string, string | null>) || {};
-      const accounts = linkedAccountsToConnected(linked);
-      setConnectedAccounts(accounts);
-      setSelectedAccountId((prev) => (prev ? prev : accounts[0]?.id ?? ''));
-      setLoading(false);
-    }
-    load();
-    return () => { cancelled = true; };
+    // Load real linked accounts from Supabase profile
+    import('@/lib/supabaseClient').then(({ supabase }) =>
+      supabase.auth.getUser().then(({ data: { user } }) => {
+        if (!user) return;
+        supabase.from('profiles').select('linked_accounts').eq('id', user.id).maybeSingle()
+          .then(({ data: profile }) => {
+            const la = profile?.linked_accounts ?? {};
+            const igDisplay = getDisplayHandle(la, 'instagram');
+            const ytDisplay = getDisplayHandle(la, 'youtube');
+            const list: ConnectedAccount[] = [
+              { id: 'ig_1', platform: 'Instagram', handle: igDisplay === 'Not connected' ? '' : igDisplay, connected: igDisplay !== 'Not connected' },
+              { id: 'yt_1', platform: 'YouTube', handle: ytDisplay === 'Not connected' ? '' : ytDisplay, connected: ytDisplay !== 'Not connected' },
+            ];
+            setAccounts(list);
+          });
+      })
+    );
   }, []);
 
-  useEffect(() => {
-    const account = selectedAccount;
-    if (!account) return;
-    let cancelled = false;
-    async function loadStats() {
-      if (!account) return;
-      const s = await fetchSocialStats(account.platformKey, account.handle);
-      if (cancelled) return;
-      const reachMult = account.platformKey === 'youtube' ? 29.8 : 6.7;
-      setStats({
-        followers: s.followers,
-        followersChange: 12,
-        reach: Math.round(s.followers * reachMult),
-        reachChange: 18,
-        engagement: s.engagementRate,
-        engagementChange: 5,
-        clicks: Math.round(s.followers * 0.05),
-        clicksChange: 23,
-      });
-    }
-    loadStats();
-    return () => { cancelled = true; };
-  }, [selectedAccount?.id]);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function loadHistory() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user || cancelled) return;
-
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-      const { data } = await supabase
-        .from('profile_analytics_history')
-        .select('id, platform, follower_count, recorded_at')
-        .eq('user_id', user.id)
-        .gte('recorded_at', thirtyDaysAgo.toISOString())
-        .order('recorded_at', { ascending: true });
-
-      if (cancelled) return;
-      setHistoryRows((data as HistoryRow[]) || []);
-    }
-    loadHistory();
-    return () => { cancelled = true; };
-  }, []);
-
-  async function handleRecordSnapshot() {
-    if (!selectedAccount) return;
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-    setRecording(true);
-    try {
-      const s = await fetchSocialStats(selectedAccount.platformKey, selectedAccount.handle);
-      const { error } = await supabase.from('profile_analytics_history').insert({
-        user_id: user.id,
-        platform: selectedAccount.platformKey,
-        follower_count: s.followers,
-        recorded_at: new Date().toISOString(),
-      });
-      if (error) throw error;
-      const newRow: HistoryRow = {
-        id: crypto.randomUUID(),
-        platform: selectedAccount.platformKey,
-        follower_count: s.followers,
-        recorded_at: new Date().toISOString(),
-      };
-      setHistoryRows((prev) => [...prev, newRow]);
-    } catch (e) {
-      console.error('Failed to record snapshot', e);
-    } finally {
-      setRecording(false);
-    }
-  }
+  const selectedAccount = accounts.find(acc => acc.id === selectedAccountId);
+  const stats = STATS_DATA[selectedAccountId] || STATS_DATA['ig_1'];
+  const chartData = useMemo(() => generateGrowthData(selectedAccountId), [selectedAccountId]);
+  const milestones = useMemo(() => getMilestones(selectedAccountId), [selectedAccountId]);
 
   // Custom tooltip for the chart
-  const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: { payload: { date: string }; value: number }[] }) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: any[] }) => {
     if (active && payload && payload.length) {
       return (
         <div className="rounded-lg border border-slate-800 bg-slate-950 p-3 shadow-xl">
@@ -294,88 +177,66 @@ export default function MonitoringPage() {
   };
 
   function getPlatformIcon(platform: string) {
-    switch (platform) {
-      case 'Instagram': return Instagram;
-      case 'YouTube': return Youtube;
-      case 'TikTok': return Music2;
-      case 'X': return Twitter;
-      default: return Instagram;
-    }
+    return platform === 'Instagram' ? Instagram : Youtube;
   }
 
   function formatFollowerCount(account: ConnectedAccount): string {
-    if (account.id === selectedAccountId && stats) {
-      return stats.followers >= 1000
-        ? (stats.followers / 1000).toFixed(1) + 'k'
-        : stats.followers.toString();
-    }
+    if (!account.connected) return 'Not connected';
     if (account.followers) return account.followers;
     if (account.subscribers) return account.subscribers;
-    return '—';
+    return '0';
   }
 
-  const hasStats = stats != null;
-  const displayStats = stats ?? {
-    followers: 0,
-    followersChange: 0,
-    reach: 0,
-    reachChange: 0,
-    engagement: 0,
-    engagementChange: 0,
-    clicks: 0,
-    clicksChange: 0,
-  };
-
-  if (loading && connectedAccounts.length === 0) {
-    return (
-      <div className="space-y-6">
-        <div>
-          <div className="h-9 w-48 rounded bg-slate-800 animate-pulse" />
-          <div className="mt-2 h-4 w-64 rounded bg-slate-800/80 animate-pulse" />
-        </div>
-        <SkeletonCardGrid count={4} />
-      </div>
-    );
-  }
-
-  if (connectedAccounts.length === 0) {
-    return (
-      <div className="space-y-6">
-        <DashboardPageHeader
-          title="Monitoring"
-          subtitle="Track your account performance"
-          icon={<BarChart3 className="h-5 w-5" />}
-        />
-        <DemoNudge />
-        <EmptyState
-          icon={BarChart3}
-          title="No accounts connected"
-          description="Connect your social accounts in Identity to see follower growth and metrics here."
-          primaryAction={{ label: 'Connect account', href: '/dashboard/settings' }}
-          secondaryAction={{ label: 'Identity', href: '/identity' }}
-        />
-      </div>
-    );
+  function handleConnectAccount() {
+    // Mock action - in production, this would open OAuth flow
+    console.log('Connect new account clicked');
+    alert('Account connection would open here. This is a mock action.');
   }
 
   return (
     <div className="space-y-6">
-      <DashboardPageHeader
-        title="Monitoring"
-        subtitle="Track your account performance"
-        icon={<BarChart3 className="h-5 w-5" />}
-        actions={
-          <>
-            {recording && <StatusChip variant="syncing" pulse label="Recording…" />}
-            <div className="flex items-center gap-3">
-          {connectedAccounts.length === 0 ? (
-            <Link
-              href="/identity"
+      <SystemStatusBanner />
+      {/* Summary cards from API (when available) */}
+      {summary && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
+            <p className="text-xs text-slate-400">Posts this week</p>
+            <p className="text-2xl font-bold text-slate-50">{summary.postsThisWeek ?? 0}</p>
+          </div>
+          <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
+            <p className="text-xs text-slate-400">Scheduled</p>
+            <p className="text-2xl font-bold text-slate-50">{summary.scheduled ?? 0}</p>
+          </div>
+          <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
+            <p className="text-xs text-slate-400">Posted</p>
+            <p className="text-2xl font-bold text-slate-50">{summary.posted ?? 0}</p>
+          </div>
+          <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
+            <p className="text-xs text-slate-400">Streak</p>
+            <p className="text-2xl font-bold text-amber-400">{summary.streak ?? 0}</p>
+          </div>
+        </div>
+      )}
+      {/* Posted posts with Enter Metrics */}
+      <PostedPostsSection />
+      {/* Header with Account Switcher */}
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-slate-50">Monitoring</h1>
+          <p className="text-sm text-slate-400 mt-1">Track your account performance</p>
+        </div>
+
+        {/* Account Switcher */}
+        <div className="flex items-center gap-3">
+          {accounts.filter(a => a.connected).length === 0 ? (
+            <button
+              type="button"
+              onClick={handleConnectAccount}
               className="inline-flex items-center gap-2 rounded-lg border border-amber-500/50 bg-amber-500/10 px-4 py-2 text-sm font-medium text-amber-400 hover:bg-amber-500/20 hover:border-amber-500 transition"
             >
               <Plus className="h-4 w-4" />
               Connect New Account
-            </Link>
+            </button>
           ) : (
             <>
               {/* Account Dropdown */}
@@ -391,7 +252,7 @@ export default function MonitoringPage() {
                       return (
                         <>
                           <Icon className="h-4 w-4" />
-                          <span className="text-slate-300">{selectedAccount.handle}</span>
+                          <span className="text-slate-300">{selectedAccount.connected ? selectedAccount.handle : 'Not connected'}</span>
                         </>
                       );
                     })()}
@@ -408,7 +269,7 @@ export default function MonitoringPage() {
                     />
                     <div className="absolute right-0 mt-2 w-64 rounded-xl border border-slate-800 bg-slate-950 shadow-xl z-20">
                       <div className="p-2 space-y-1">
-                        {connectedAccounts.map((account) => {
+                        {accounts.map((account) => {
                           const Icon = getPlatformIcon(account.platform);
                           const isSelected = account.id === selectedAccountId;
                           return (
@@ -427,7 +288,7 @@ export default function MonitoringPage() {
                             >
                               <Icon className="h-4 w-4 flex-shrink-0" />
                               <div className="flex-1 text-left min-w-0">
-                                <div className="text-sm font-medium truncate">{account.handle}</div>
+                                <div className="text-sm font-medium truncate">{account.connected ? account.handle : 'Not connected'}</div>
                                 <div className="text-xs text-slate-500">
                                   {account.platform} • {formatFollowerCount(account)}
                                 </div>
@@ -440,14 +301,17 @@ export default function MonitoringPage() {
                         })}
                       </div>
                       <div className="border-t border-slate-800 p-2">
-                        <Link
-                          href="/identity"
-                          onClick={() => setIsDropdownOpen(false)}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleConnectAccount();
+                            setIsDropdownOpen(false);
+                          }}
                           className="w-full flex items-center gap-2 px-4 py-2.5 rounded-lg text-slate-300 hover:bg-slate-800 transition text-sm font-medium"
                         >
                           <Plus className="h-4 w-4" />
                           Connect New Account
-                        </Link>
+                        </button>
                       </div>
                     </div>
                   </>
@@ -455,90 +319,91 @@ export default function MonitoringPage() {
               </div>
             </>
           )}
-            </div>
-          </>
-        }
-      />
+        </div>
+      </div>
 
-      {/* Last 7 days summary strip */}
-      <div className="section-frame p-4">
-        <h2 className="text-sm font-semibold text-slate-300 mb-4">Last 7 days</h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {/* Followers change */}
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center shrink-0">
-              <Users className="h-5 w-5 text-blue-400" />
+      {/* Top Row: Stat Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {/* Total Followers */}
+        <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6 hover:border-blue-500/50 transition">
+          <div className="flex items-center justify-between mb-4">
+            <div className="w-12 h-12 rounded-xl bg-blue-500/10 flex items-center justify-center">
+              <Users className="h-6 w-6 text-blue-400" />
             </div>
-            {hasStats ? (
-              <div>
-                <p className="text-xs text-slate-500">Followers change</p>
-                <p className="text-lg font-semibold text-slate-100">
-                  +{displayStats.followersChange}%
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-1.5">
-                <div className="h-3 w-16 rounded bg-slate-800 animate-pulse" />
-                <div className="h-5 w-12 rounded bg-slate-800 animate-pulse" />
-              </div>
-            )}
+            <div className="flex items-center gap-1 text-xs font-semibold text-emerald-400">
+              <TrendingUp className="h-3 w-3" />
+              +{stats.followersChange}%
+            </div>
           </div>
-          {/* Reach change */}
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center shrink-0">
-              <Eye className="h-5 w-5 text-amber-400" />
-            </div>
-            {hasStats ? (
-              <div>
-                <p className="text-xs text-slate-500">Reach change</p>
-                <p className="text-lg font-semibold text-slate-100">
-                  +{displayStats.reachChange}%
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-1.5">
-                <div className="h-3 w-16 rounded bg-slate-800 animate-pulse" />
-                <div className="h-5 w-12 rounded bg-slate-800 animate-pulse" />
-              </div>
-            )}
+          <div className="space-y-1">
+            <p className="text-xs font-medium text-slate-400 uppercase tracking-wide">
+              {selectedAccount?.platform === 'YouTube' ? 'Subscribers' : 'Total Followers'}
+            </p>
+            <p className="text-3xl font-bold text-slate-50">
+              {selectedAccount?.platform === 'YouTube' 
+                ? (stats.followers / 1000).toFixed(1) + 'k'
+                : (stats.followers >= 1000 ? (stats.followers / 1000).toFixed(1) + 'k' : stats.followers.toLocaleString())
+              }
+            </p>
+            <p className="text-xs text-slate-500">+{stats.followersChange}% this month</p>
           </div>
-          {/* Engagement change */}
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-rose-500/10 flex items-center justify-center shrink-0">
-              <Heart className="h-5 w-5 text-rose-400" />
+        </div>
+
+        {/* Monthly Reach */}
+        <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6 hover:border-amber-500/50 transition">
+          <div className="flex items-center justify-between mb-4">
+            <div className="w-12 h-12 rounded-xl bg-amber-500/10 flex items-center justify-center">
+              <Eye className="h-6 w-6 text-amber-400" />
             </div>
-            {hasStats ? (
-              <div>
-                <p className="text-xs text-slate-500">Engagement change</p>
-                <p className="text-lg font-semibold text-slate-100">
-                  +{displayStats.engagementChange}%
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-1.5">
-                <div className="h-3 w-16 rounded bg-slate-800 animate-pulse" />
-                <div className="h-5 w-12 rounded bg-slate-800 animate-pulse" />
-              </div>
-            )}
+            <div className="flex items-center gap-1 text-xs font-semibold text-emerald-400">
+              <TrendingUp className="h-3 w-3" />
+              +{stats.reachChange}%
+            </div>
           </div>
-          {/* Link clicks change */}
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center shrink-0">
-              <MousePointerClick className="h-5 w-5 text-emerald-400" />
+          <div className="space-y-1">
+            <p className="text-xs font-medium text-slate-400 uppercase tracking-wide">
+              {selectedAccount?.platform === 'YouTube' ? 'Total Views' : 'Monthly Reach'}
+            </p>
+            <p className="text-3xl font-bold text-slate-50">
+              {stats.reach >= 1000 ? (stats.reach / 1000).toFixed(1) + 'k' : stats.reach.toLocaleString()}
+            </p>
+            <p className="text-xs text-slate-500">+{stats.reachChange}% this month</p>
+          </div>
+        </div>
+
+        {/* Engagement Rate */}
+        <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6 hover:border-rose-500/50 transition">
+          <div className="flex items-center justify-between mb-4">
+            <div className="w-12 h-12 rounded-xl bg-rose-500/10 flex items-center justify-center">
+              <Heart className="h-6 w-6 text-rose-400" />
             </div>
-            {hasStats ? (
-              <div>
-                <p className="text-xs text-slate-500">Link clicks change</p>
-                <p className="text-lg font-semibold text-slate-100">
-                  +{displayStats.clicksChange}%
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-1.5">
-                <div className="h-3 w-16 rounded bg-slate-800 animate-pulse" />
-                <div className="h-5 w-12 rounded bg-slate-800 animate-pulse" />
-              </div>
-            )}
+            <div className="flex items-center gap-1 text-xs font-semibold text-emerald-400">
+              <TrendingUp className="h-3 w-3" />
+              +{stats.engagementChange}%
+            </div>
+          </div>
+          <div className="space-y-1">
+            <p className="text-xs font-medium text-slate-400 uppercase tracking-wide">Engagement Rate</p>
+            <p className="text-3xl font-bold text-slate-50">{stats.engagement}%</p>
+            <p className="text-xs text-slate-500">+{stats.engagementChange}% this month</p>
+          </div>
+        </div>
+
+        {/* Link Clicks */}
+        <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6 hover:border-emerald-500/50 transition">
+          <div className="flex items-center justify-between mb-4">
+            <div className="w-12 h-12 rounded-xl bg-emerald-500/10 flex items-center justify-center">
+              <MousePointerClick className="h-6 w-6 text-emerald-400" />
+            </div>
+            <div className="flex items-center gap-1 text-xs font-semibold text-emerald-400">
+              <TrendingUp className="h-3 w-3" />
+              +{stats.clicksChange}%
+            </div>
+          </div>
+          <div className="space-y-1">
+            <p className="text-xs font-medium text-slate-400 uppercase tracking-wide">Link Clicks</p>
+            <p className="text-3xl font-bold text-slate-50">{stats.clicks.toLocaleString()}</p>
+            <p className="text-xs text-slate-500">+{stats.clicksChange}% this month</p>
           </div>
         </div>
       </div>
@@ -547,70 +412,43 @@ export default function MonitoringPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Growth Trajectory Chart (2/3 width) */}
         <div className="lg:col-span-2 rounded-2xl border border-slate-800 bg-slate-950/60 p-6">
-          <div className="mb-6 flex items-start justify-between">
-            <div>
-              <h2 className="text-xl font-semibold text-slate-50 mb-1">Growth Trajectory</h2>
-              <p className="text-sm text-slate-400">30-day follower growth (record snapshots to build history)</p>
-            </div>
-            {selectedAccount && (
-              <button
-                type="button"
-                onClick={handleRecordSnapshot}
-                disabled={recording}
-                className="inline-flex items-center gap-2 rounded-lg border border-amber-500/50 bg-amber-500/10 px-4 py-2 text-sm font-medium text-amber-400 hover:bg-amber-500/20 hover:border-amber-500 transition disabled:opacity-50"
-              >
-                {recording ? <Loader2 className="h-4 w-4 animate-spin" /> : <TrendingUp className="h-4 w-4" />}
-                Record Snapshot
-              </button>
-            )}
+          <div className="mb-6">
+            <h2 className="text-xl font-semibold text-slate-50 mb-1">Growth Trajectory</h2>
+            <p className="text-sm text-slate-400">30-day follower growth</p>
           </div>
           <div className="h-[400px] w-full">
-            {chartData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="colorFollowers" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                  <XAxis
-                    dataKey="date"
-                    stroke="#64748b"
-                    style={{ fontSize: '12px' }}
-                    tick={{ fill: '#64748b' }}
-                  />
-                  <YAxis
-                    stroke="#64748b"
-                    style={{ fontSize: '12px' }}
-                    tick={{ fill: '#64748b' }}
-                    tickFormatter={(value) => value.toLocaleString()}
-                  />
-                  <Tooltip content={<CustomTooltip />} />
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="colorFollowers" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                <XAxis
+                  dataKey="date"
+                  stroke="#64748b"
+                  style={{ fontSize: '12px' }}
+                  tick={{ fill: '#64748b' }}
+                />
+                <YAxis
+                  stroke="#64748b"
+                  style={{ fontSize: '12px' }}
+                  tick={{ fill: '#64748b' }}
+                  tickFormatter={(value) => value.toLocaleString()}
+                />
+                <Tooltip content={<CustomTooltip />} />
                   <Area
-                    type="monotone"
-                    dataKey="followers"
-                    stroke="#f59e0b"
-                    strokeWidth={2}
-                    fillOpacity={1}
-                    fill="url(#colorFollowers)"
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            ) : (
-              <>
-                <SkeletonChart />
-                <div className="mt-4 rounded-lg border border-slate-800 bg-slate-900/50 px-4 py-3 text-center">
-                  <p className="text-sm font-medium text-slate-400">
-                    Connect an account to start tracking
-                  </p>
-                  <p className="text-xs text-slate-500 mt-1">
-                    Record snapshots to build your growth chart
-                  </p>
-                </div>
-              </>
-            )}
+                  type="monotone"
+                  dataKey="followers"
+                  stroke="#f59e0b"
+                  strokeWidth={2}
+                  fillOpacity={1}
+                  fill="url(#colorFollowers)"
+                />
+              </AreaChart>
+            </ResponsiveContainer>
           </div>
         </div>
 

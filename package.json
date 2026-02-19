@@ -12,6 +12,8 @@
     "test:explore": "playwright test tests/explorer.spec.ts"
   },
   "dependencies": {
+    "@ffmpeg/ffmpeg": "^0.12.15",
+    "@ffmpeg/util": "^0.12.2",
     "@google/generative-ai": "^0.24.1",
     "@stripe/stripe-js": "^2.4.0",
     "@supabase/ssr": "^0.8.0",

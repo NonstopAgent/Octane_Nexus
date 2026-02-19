@@ -13,6 +13,11 @@ export function NavigationHeader() {
 
   useEffect(() => {
     async function checkAuth() {
+      // Demo mode: cookie allows access without sign-in
+      if (typeof document !== 'undefined' && document.cookie.includes('octane_demo_mode=true')) {
+        setIsAuthenticated(true);
+        return;
+      }
       // Check for mock user first
       if (isLocalhost() && (hasMockSession() || getMockUser())) {
         setIsAuthenticated(true);

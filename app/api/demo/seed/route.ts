@@ -6,6 +6,7 @@ import {
   buildDemoSavedBlueprints,
   buildDemoProfileAnalyticsHistory,
   buildDemoInstagramPosts,
+  buildDemoStyleTokens,
   getNextWeekIso,
 } from '@/lib/demo-seed';
 
@@ -109,18 +110,28 @@ export async function POST(req: NextRequest) {
     }
     // If instagram_posts insert fails (e.g. table or RLS), continue – context API will still work with empty history
 
-    // 5) Optional: add demo linked account for Monitoring if none set (skip for demo user with no profile)
-    const { data: profile } = await db.from('profiles').select('linked_accounts').eq('id', userId).maybeSingle();
-    const linked = (profile?.linked_accounts as Record<string, string> | null) ?? {};
-    const hasAny = linked.instagram || linked.tiktok || linked.youtube || linked.x;
-    if (!hasAny && user) {
+    // 5) Style token presets
+    await db.from('style_tokens').delete().eq('user_id', userId).like('name', '[DEMO]%');
+    const tokenRows = buildDemoStyleTokens(userId);
+    const { data: insertedTokens, error: tokensErr } = await db.from('style_tokens').insert(tokenRows).select('id');
+    if (tokensErr) {
+      console.warn('Demo seed: style_tokens insert failed:', tokensErr.message);
+    }
+    if (insertedTokens && insertedTokens.length > 0) {
+      await db.from('user_settings').upsert({
+        user_id: userId,
+        default_style_token_id: insertedTokens[0].id,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'user_id' });
+    }
+
+    // 6) Set Tradeview AI brand identity on profile (skip linked_accounts — demo never fakes connections)
+    if (user) {
       await db
         .from('profiles')
         .update({
-          linked_accounts: {
-            ...linked,
-            instagram: '@demo_user',
-          },
+          brand_vision: 'Tradeview AI — AI-powered trading insights',
+          niche: 'ai trading & market insights',
         })
         .eq('id', userId);
     }
@@ -129,7 +140,8 @@ export async function POST(req: NextRequest) {
       (insertedPosts?.length ?? 0) +
       blueprintRows.length +
       historyIds.length +
-      (insertedIg?.length ?? 0);
+      (insertedIg?.length ?? 0) +
+      (insertedTokens?.length ?? 0);
 
     return NextResponse.json({ success: true, count });
   } catch (e) {

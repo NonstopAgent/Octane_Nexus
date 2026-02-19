@@ -1,8 +1,10 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { TrendingUp, Search, Filter, Hash, Sparkles } from 'lucide-react';
+import { TrendingUp, Search, Filter, Hash, Sparkles, Send } from 'lucide-react';
 import { getTrendingHashtags, getTrendingByCategory, searchTrendingHashtags, type Platform, type TrendingHashtag } from '@/lib/trends';
+import { POST_STATUS } from '@/lib/constants';
+import { addStoredPost, getStoredPosts } from '@/lib/creatorStore';
 
 const PLATFORMS: { value: Platform | 'all'; label: string }[] = [
   { value: 'all', label: 'All Platforms' },
@@ -28,6 +30,7 @@ export default function TrendsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPlatform, setSelectedPlatform] = useState<Platform | 'all'>('all');
   const [selectedCategory, setSelectedCategory] = useState('All Categories');
+  const [sendingId, setSendingId] = useState<string | null>(null);
 
   const filteredHashtags = useMemo(() => {
     let filtered: TrendingHashtag[];
@@ -200,6 +203,50 @@ export default function TrendsPage() {
               <div className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full bg-slate-950/80 text-xs font-bold text-slate-400">
                 #{index + 1}
               </div>
+
+              {/* Send to Production */}
+              <button
+                type="button"
+                onClick={async () => {
+                  const key = `${hashtag.platform}-${hashtag.tag}`;
+                  setSendingId(key);
+                  const ideaTitle = `${hashtag.tag} — ${hashtag.description || hashtag.category}`;
+                  const demoMode = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
+                  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+                  if (demoMode) headers['x-demo-mode'] = 'true';
+                  try {
+                    const res = await fetch('/api/posts', {
+                      method: 'POST',
+                      credentials: 'include',
+                      headers,
+                      body: JSON.stringify({ idea_title: ideaTitle, status: POST_STATUS.IDEA }),
+                    });
+                    if (res.ok) {
+                      const { post } = await res.json();
+                      if (post?.id) {
+                        const stored = getStoredPosts();
+                        if (!stored.some((p) => p.id === post.id)) {
+                          addStoredPost({
+                            user_id: post.user_id || 'demo_user_mvp_v1',
+                            status: post.status || POST_STATUS.IDEA,
+                            idea_title: post.idea_title || ideaTitle,
+                          });
+                        }
+                      }
+                    } else {
+                      addStoredPost({ user_id: 'demo_user_mvp_v1', status: POST_STATUS.IDEA, idea_title: ideaTitle });
+                    }
+                  } catch {
+                    addStoredPost({ user_id: 'demo_user_mvp_v1', status: POST_STATUS.IDEA, idea_title: ideaTitle });
+                  }
+                  setSendingId(null);
+                }}
+                disabled={sendingId === `${hashtag.platform}-${hashtag.tag}`}
+                className="mt-3 w-full inline-flex items-center justify-center gap-2 rounded-lg border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-400 hover:bg-amber-500/20 disabled:opacity-50"
+              >
+                <Send className="h-3.5 w-3.5" />
+                Send to Production
+              </button>
             </div>
           ))}
         </div>

@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Settings,
   User,
@@ -18,15 +18,19 @@ import {
   Key,
   Shield,
   Database,
+  Palette,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabaseClient';
 import { seedDemoData } from '@/actions/seed-data';
 import DashboardPageHeader from '@/components/dashboard/DashboardPageHeader';
+import StyleTokensSection from '@/components/dashboard/StyleTokensSection';
+import { getKey, setKey as saveKey } from '@/lib/apiKeys';
+import { getDisplayHandle, type PlatformKey } from '@/lib/linkedAccounts';
 
 const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
 
-type TabId = 'general' | 'integrations' | 'billing' | 'developer' | 'demo';
+type TabId = 'general' | 'integrations' | 'billing' | 'developer' | 'style' | 'demo';
 
 type LinkedAccounts = {
   instagram: string | null;
@@ -39,6 +43,7 @@ const BASE_TABS: { id: TabId; label: string; icon: typeof User }[] = [
   { id: 'general', label: 'General', icon: User },
   { id: 'integrations', label: 'Integrations', icon: Plug },
   { id: 'billing', label: 'Billing', icon: CreditCard },
+  { id: 'style', label: 'Style', icon: Palette },
   { id: 'developer', label: 'Developer', icon: Code2 },
   ...(DEMO_MODE ? [{ id: 'demo' as const, label: 'Demo Data', icon: Database }] : []),
 ];
@@ -51,8 +56,11 @@ const PLATFORMS: { key: keyof LinkedAccounts; label: string; Icon: typeof Instag
   { key: 'youtube', label: 'YouTube', Icon: Youtube },
 ];
 
-export default function SettingsPage() {
+const TAB_PARAM = 'tab';
+
+function SettingsContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState<TabId>('general');
   const [loading, setLoading] = useState(true);
   const [seedLoading, setSeedLoading] = useState(false);
@@ -73,10 +81,20 @@ export default function SettingsPage() {
   const [connectSaving, setConnectSaving] = useState(false);
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [, setNameSaving] = useState(false);
-  const [developerKeys, setDeveloperKeys] = useState({ rapidApi: '', openai: '' });
+  const [developerKeys, setDeveloperKeys] = useState({ rapidApi: '', openai: '', pexels: '' });
   const [developerSaving, setDeveloperSaving] = useState(false);
+  const [developerSaved, setDeveloperSaved] = useState(false);
   const [demoSeedLoading, setDemoSeedLoading] = useState(false);
   const [demoResetLoading, setDemoResetLoading] = useState(false);
+  const [financeDisclaimerEnabled, setFinanceDisclaimerEnabled] = useState(true);
+  const [financeDisclaimerSaving, setFinanceDisclaimerSaving] = useState(false);
+
+  useEffect(() => {
+    const tabParam = searchParams.get(TAB_PARAM);
+    if (tabParam && TABS.some((t) => t.id === tabParam)) {
+      setActiveTab(tabParam as TabId);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     async function load() {
@@ -88,13 +106,14 @@ export default function SettingsPage() {
 
       const { data: profile } = await supabase
         .from('profiles')
-        .select('profile_image_url, full_name, linked_accounts, founder_license')
+        .select('profile_image_url, full_name, linked_accounts, founder_license, finance_disclaimer_enabled')
         .eq('id', user.id)
         .maybeSingle();
 
       if (profile) {
         setProfileImageUrl(profile.profile_image_url ?? null);
         setFullName(profile.full_name ?? '');
+        setFinanceDisclaimerEnabled(profile.finance_disclaimer_enabled !== false);
         const la = (profile.linked_accounts as LinkedAccounts) || {};
         setLinkedAccounts({
           instagram: la.instagram ?? null,
@@ -112,9 +131,11 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const rapid = localStorage.getItem('octane_rapidapi_key') ?? '';
-      const openai = localStorage.getItem('octane_openai_key') ?? '';
-      setDeveloperKeys({ rapidApi: rapid, openai });
+      setDeveloperKeys({
+        rapidApi: getKey('rapidapi'),
+        openai: getKey('openai'),
+        pexels: getKey('pexels'),
+      });
     }
   }, []);
 
@@ -273,9 +294,11 @@ export default function SettingsPage() {
   function handleSaveDeveloperKeys() {
     if (typeof window === 'undefined') return;
     setDeveloperSaving(true);
-    localStorage.setItem('octane_rapidapi_key', developerKeys.rapidApi);
-    localStorage.setItem('octane_openai_key', developerKeys.openai);
-    setTimeout(() => setDeveloperSaving(false), 600);
+    if (developerKeys.rapidApi) saveKey('rapidapi', developerKeys.rapidApi);
+    if (developerKeys.openai) saveKey('openai', developerKeys.openai);
+    if (developerKeys.pexels) saveKey('pexels', developerKeys.pexels);
+    setDeveloperSaved(true);
+    setTimeout(() => { setDeveloperSaving(false); setDeveloperSaved(false); }, 1500);
   }
 
   function handleDeleteAccount() {
@@ -378,6 +401,30 @@ export default function SettingsPage() {
                       />
                       <p className="text-xs text-slate-500 mt-1">Email cannot be changed here</p>
                     </div>
+                    <div className="flex items-center justify-between rounded-lg border border-slate-700 bg-slate-900/50 px-4 py-3">
+                      <div>
+                        <p className="text-sm font-medium text-slate-200">Finance disclaimer reminder (recommended)</p>
+                        <p className="text-xs text-slate-500 mt-0.5">Get a reminder in Post Lab to add &quot;Not financial advice&quot; when your niche suggests finance content.</p>
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={financeDisclaimerEnabled}
+                        onClick={async () => {
+                          const { data: { user: u } } = await supabase.auth.getUser();
+                          if (!u) return;
+                          setFinanceDisclaimerSaving(true);
+                          const next = !financeDisclaimerEnabled;
+                          const { error: e } = await supabase.from('profiles').update({ finance_disclaimer_enabled: next }).eq('id', u.id);
+                          if (!e) setFinanceDisclaimerEnabled(next);
+                          setFinanceDisclaimerSaving(false);
+                        }}
+                        disabled={financeDisclaimerSaving}
+                        className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 focus:ring-offset-slate-900 ${financeDisclaimerEnabled ? 'bg-amber-500' : 'bg-slate-600'}`}
+                      >
+                        <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition ${financeDisclaimerEnabled ? 'translate-x-5' : 'translate-x-1'}`} />
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -403,7 +450,8 @@ export default function SettingsPage() {
               <h2 className="text-lg font-semibold text-slate-50 mb-4">Connected Accounts</h2>
               <div className="grid gap-4">
                 {PLATFORMS.map(({ key, label, Icon }) => {
-                  const handle = linkedAccounts[key];
+                  const display = getDisplayHandle(linkedAccounts, key as PlatformKey);
+                  const connected = display !== 'Not connected';
                   return (
                     <div
                       key={key}
@@ -415,14 +463,10 @@ export default function SettingsPage() {
                         </div>
                         <div>
                           <p className="font-medium text-slate-100">{label}</p>
-                          {handle ? (
-                            <p className="text-sm text-slate-400">{handle}</p>
-                          ) : (
-                            <p className="text-sm text-slate-500">Not connected</p>
-                          )}
+                          <p className="text-sm text-slate-400">{display}</p>
                         </div>
                       </div>
-                      {handle ? (
+                      {connected ? (
                         <button
                           type="button"
                           onClick={() => handleDisconnect(key)}
@@ -430,7 +474,8 @@ export default function SettingsPage() {
                         >
                           Disconnect
                         </button>
-                      ) : (
+                      ) : null}
+                      {!connected ? (
                         <button
                           type="button"
                           onClick={() => {
@@ -441,7 +486,7 @@ export default function SettingsPage() {
                         >
                           Connect Account
                         </button>
-                      )}
+                      ) : null}
                     </div>
                   );
                 })}
@@ -498,16 +543,31 @@ export default function SettingsPage() {
                     className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-amber-500 focus:outline-none"
                   />
                 </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-400 mb-1.5">Pexels Key</label>
+                  <input
+                    type="password"
+                    value={developerKeys.pexels}
+                    onChange={(e) => setDeveloperKeys((k) => ({ ...k, pexels: e.target.value }))}
+                    placeholder="••••••••••••••••"
+                    className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-amber-500 focus:outline-none"
+                  />
+                </div>
                 <button
                   type="button"
                   onClick={handleSaveDeveloperKeys}
                   disabled={developerSaving}
                   className="inline-flex items-center gap-2 rounded-lg border border-amber-500 bg-amber-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-amber-400 disabled:opacity-60 transition"
                 >
-                  {developerSaving ? (
+                  {developerSaved ? (
+                    <>
+                      <Key className="h-4 w-4" />
+                      Saved!
+                    </>
+                  ) : developerSaving ? (
                     <>
                       <Loader2 className="h-4 w-4 animate-spin" />
-                      Saved
+                      Saving…
                     </>
                   ) : (
                     <>
@@ -546,6 +606,8 @@ export default function SettingsPage() {
               </div>
             </div>
           )}
+
+          {activeTab === 'style' && <StyleTokensSection />}
 
           {DEMO_MODE && activeTab === 'demo' && (
             <div className="space-y-6">
@@ -627,5 +689,17 @@ export default function SettingsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function SettingsPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex min-h-[400px] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-amber-400" />
+      </div>
+    }>
+      <SettingsContent />
+    </Suspense>
   );
 }

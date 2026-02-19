@@ -1,36 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerSupabaseClient } from '@/lib/supabaseServer';
-import { createServiceRoleClient } from '@/lib/supabaseServer';
+import { createServerSupabaseClient, createServiceRoleClient } from '@/lib/supabaseServer';
 import { getEffectiveUserIdFromRequest } from '@/lib/authServer';
-/**
- * GET: List content_posts for the effective user.
- * Uses service role when effective user is demo user (no session) so RLS doesn't block.
- */
+import { listPosts } from '@/lib/postsRepo';
+import { resolvePostVideoFields } from '@/lib/media-resolver';
+
 export async function GET(req: NextRequest) {
   try {
     const supabase = await createServerSupabaseClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const { data: { user } } = await supabase.auth.getUser();
     const userId = getEffectiveUserIdFromRequest(req, user?.id ?? null);
+    if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    if (!userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const db = user?.id === userId ? supabase : createServiceRoleClient();
+    const posts = await listPosts(db, userId);
 
-    const client = user?.id === userId ? supabase : createServiceRoleClient();
-    const { data, error } = await client
-      .from('content_posts')
-      .select('*')
-      .eq('user_id', userId)
-      .order('updated_at', { ascending: false });
+    const service = createServiceRoleClient();
+    const resolved = await Promise.all(
+      posts.map(async (p) => {
+        const urls = await resolvePostVideoFields(
+          p.final_video_url ?? null,
+          p.background_video_url ?? null,
+          service
+        );
+        return { ...p, ...urls };
+      })
+    );
 
-    if (error) {
-      console.error('production/posts error:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-
-    return NextResponse.json(data ?? []);
+    return NextResponse.json(resolved);
   } catch (e) {
     console.error('production/posts error:', e);
     return NextResponse.json(

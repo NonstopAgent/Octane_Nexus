@@ -34,6 +34,8 @@ import DashboardPageHeader from '@/components/dashboard/DashboardPageHeader';
 import DemoNudge from '@/components/ui/DemoNudge';
 import { getPlayableVideoUrl } from '@/lib/playableUrl';
 import BRollPanel from '@/components/dashboard/BRollPanel';
+import FinanceDisclaimerModal from '@/components/dashboard/FinanceDisclaimerModal';
+import { shouldShowFinanceReminder } from '@/lib/financeDisclaimer';
 
 type PlatformKey = 'TikTok' | 'Shorts' | 'Reels';
 type ContentPost = {
@@ -123,6 +125,9 @@ export default function PostLabPage() {
   const [lastRenderError, setLastRenderError] = useState<string | null>(null);
   const [videoError, setVideoError] = useState(false);
   const [lastUploadBucket, setLastUploadBucket] = useState<string | null>(null);
+  const [financeReminderOpen, setFinanceReminderOpen] = useState(false);
+  const [financeReminderAck, setFinanceReminderAck] = useState<(() => void) | null>(null);
+  const [profileSlice, setProfileSlice] = useState<{ niche: string | null; finance_disclaimer_enabled: boolean }>({ niche: null, finance_disclaimer_enabled: true });
   const [systemHealth, setSystemHealth] = useState<{
     serviceRolePresent?: boolean;
     videosBucketExists?: boolean;
@@ -312,6 +317,16 @@ export default function PostLabPage() {
   }, []);
 
   useEffect(() => {
+    if (!userId) return;
+    fetch('/api/profile/effective', { credentials: 'include' })
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => {
+        if (d) setProfileSlice({ niche: d.niche ?? null, finance_disclaimer_enabled: d.finance_disclaimer_enabled !== false });
+      })
+      .catch(() => {});
+  }, [userId]);
+
+  useEffect(() => {
     if (activePost) {
       setCaption(activePost.caption || '');
       setHashtagsInput(
@@ -349,10 +364,14 @@ export default function PostLabPage() {
           toast.error(data?.error || 'Failed to generate caption & tags');
           return;
         }
-        setCaption(data.caption || '');
+        const newCaption = data.caption || '';
+        setCaption(newCaption);
         setHashtagsInput(Array.isArray(data.hashtags) ? data.hashtags.join(' ') : '');
         await fetchPosts();
         toast.success('Caption & tags generated');
+        if (shouldShowFinanceReminder(profileSlice.finance_disclaimer_enabled, profileSlice.niche, newCaption)) {
+          setFinanceReminderOpen(true);
+        }
       } else {
         const result = await generateMetadata(activePost.id);
         if ('error' in result) {
@@ -360,16 +379,20 @@ export default function PostLabPage() {
           toast.error(result.error);
           return;
         }
-        setCaption(result.caption);
+        const newCaption = result.caption;
+        setCaption(newCaption);
         setHashtagsInput(result.hashtags.join(' '));
         await fetchPosts();
+        if (shouldShowFinanceReminder(profileSlice.finance_disclaimer_enabled, profileSlice.niche, newCaption)) {
+          setFinanceReminderOpen(true);
+        }
       }
     } finally {
       setGenerating(false);
     }
   }
 
-  async function handleSchedulePost() {
+  async function handleSchedulePost(skipFinanceReminder?: boolean) {
     if (!activePost) return;
     const tags = hashtagsInput
       .split(/\s+/)
@@ -380,6 +403,14 @@ export default function PostLabPage() {
     if (!scheduledDate || !scheduledDate.trim()) {
       setError('Please pick a date');
       toast.error('Please pick a date');
+      return;
+    }
+
+    if (!skipFinanceReminder && shouldShowFinanceReminder(profileSlice.finance_disclaimer_enabled, profileSlice.niche, caption)) {
+      setFinanceReminderOpen(true);
+      setFinanceReminderAck(() => () => {
+        void handleSchedulePost(true);
+      });
       return;
     }
 
@@ -477,6 +508,18 @@ export default function PostLabPage() {
 
   return (
     <div className="space-y-6">
+      <FinanceDisclaimerModal
+        open={financeReminderOpen}
+        onClose={() => {
+          setFinanceReminderOpen(false);
+          setFinanceReminderAck(null);
+        }}
+        onAcknowledge={() => {
+          financeReminderAck?.();
+          setFinanceReminderOpen(false);
+          setFinanceReminderAck(null);
+        }}
+      />
       <DashboardPageHeader
         title="Post Lab"
         subtitle="The Shipping Department — finalize your generated videos before posting."
@@ -900,7 +943,7 @@ export default function PostLabPage() {
                 {/* Ship It - only for ready posts */}
                 <button
                   type="button"
-                  onClick={handleSchedulePost}
+                  onClick={() => void handleSchedulePost()}
                   disabled={scheduling || !isReady}
                   data-testid="schedule-post-btn"
                   className="w-full inline-flex items-center justify-center gap-2 rounded-xl border-2 border-amber-500 bg-amber-500 px-6 py-3.5 text-base font-semibold text-slate-950 hover:bg-amber-400 disabled:opacity-60 disabled:cursor-not-allowed transition"
