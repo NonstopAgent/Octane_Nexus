@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, Suspense } from 'react';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Settings,
@@ -86,6 +87,8 @@ function SettingsContent() {
   const [developerSaved, setDeveloperSaved] = useState(false);
   const [demoSeedLoading, setDemoSeedLoading] = useState(false);
   const [demoResetLoading, setDemoResetLoading] = useState(false);
+  const [lastDemoAction, setLastDemoAction] = useState<'seeded' | 'reset' | null>(null);
+  const [lastDemoActionAt, setLastDemoActionAt] = useState<number | null>(null);
   const [financeDisclaimerEnabled, setFinanceDisclaimerEnabled] = useState(true);
   const [financeDisclaimerSaving, setFinanceDisclaimerSaving] = useState(false);
 
@@ -258,13 +261,15 @@ function SettingsContent() {
   async function handleDemoSeed() {
     setDemoSeedLoading(true);
     try {
-      const res = await fetch('/api/demo/seed', { method: 'POST' });
+      const res = await fetch('/api/demo/seed', { method: 'POST', credentials: 'include' });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         toast.error(data?.error ?? 'Failed to load demo data');
         return;
       }
-      toast.success(`Demo data loaded (${data.count ?? 0} items). Refresh the dashboard to see it.`);
+      setLastDemoAction('seeded');
+      setLastDemoActionAt(Date.now());
+      toast.success(`Demo data loaded (${data.count ?? 0} items).`);
       router.refresh();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed to load demo data');
@@ -276,12 +281,14 @@ function SettingsContent() {
   async function handleDemoReset() {
     setDemoResetLoading(true);
     try {
-      const res = await fetch('/api/demo/reset', { method: 'POST' });
+      const res = await fetch('/api/demo/reset', { method: 'POST', credentials: 'include' });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         toast.error(data?.error ?? 'Failed to reset demo data');
         return;
       }
+      setLastDemoAction('reset');
+      setLastDemoActionAt(Date.now());
       toast.success('Demo data reset.');
       router.refresh();
     } catch (e) {
@@ -611,41 +618,57 @@ function SettingsContent() {
 
           {DEMO_MODE && activeTab === 'demo' && (
             <div className="space-y-6">
-              <h2 className="text-lg font-semibold text-slate-50">Demo Data</h2>
-              <p className="text-sm text-slate-400">
-                Load deterministic demo data so you can test the MVP without connecting real social accounts. Reset removes only demo-seeded data.
-              </p>
-              <div className="flex flex-wrap gap-3">
-                <button
-                  type="button"
-                  onClick={handleDemoSeed}
-                  disabled={demoSeedLoading}
-                  className="inline-flex items-center gap-2 rounded-lg border border-amber-500/50 bg-amber-500/10 px-4 py-2.5 text-sm font-semibold text-amber-400 hover:bg-amber-500/20 disabled:opacity-60 transition"
-                >
-                  {demoSeedLoading ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Loading…
-                    </>
-                  ) : (
-                    'Load Demo Data'
+              <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-6">
+                <h2 className="text-lg font-semibold text-slate-50">Demo Data (Tradeview AI)</h2>
+                <p className="text-sm text-slate-400 mt-1">
+                  Demo user: Tradeview AI. Load deterministic demo data to test the MVP without connecting real social accounts. Reset removes only demo-seeded data.
+                </p>
+                {lastDemoAction && (
+                  <p className="text-xs text-slate-500 mt-2">
+                    Last action: {lastDemoAction === 'seeded' ? 'Seeded' : 'Reset'}
+                    {lastDemoActionAt != null && <> at {new Date(lastDemoActionAt).toLocaleString()}</>}
+                  </p>
+                )}
+                <div className="flex flex-wrap items-center gap-3 mt-4">
+                  <button
+                    type="button"
+                    onClick={handleDemoSeed}
+                    disabled={demoSeedLoading}
+                    className="inline-flex items-center gap-2 rounded-lg border-2 border-amber-500 bg-amber-500 px-4 py-2.5 text-sm font-semibold text-slate-950 hover:bg-amber-400 disabled:opacity-60 transition"
+                  >
+                    {demoSeedLoading ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Seeding…
+                      </>
+                    ) : (
+                      'Seed Demo Data'
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDemoReset}
+                    disabled={demoResetLoading}
+                    className="inline-flex items-center gap-2 rounded-lg border border-rose-500/50 bg-rose-500/10 px-4 py-2.5 text-sm font-medium text-rose-300 hover:bg-rose-500/20 disabled:opacity-60 transition"
+                  >
+                    {demoResetLoading ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Resetting…
+                      </>
+                    ) : (
+                      'Reset Demo Data'
+                    )}
+                  </button>
+                  {lastDemoAction === 'seeded' && (
+                    <Link
+                      href="/dashboard/production"
+                      className="inline-flex items-center gap-2 rounded-lg border border-slate-600 bg-slate-800/60 px-4 py-2.5 text-sm font-medium text-slate-200 hover:bg-slate-700 hover:text-slate-100 transition"
+                    >
+                      Go to Production
+                    </Link>
                   )}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleDemoReset}
-                  disabled={demoResetLoading}
-                  className="inline-flex items-center gap-2 rounded-lg border border-slate-600 bg-slate-800/60 px-4 py-2.5 text-sm font-medium text-slate-200 hover:bg-slate-700 disabled:opacity-60 transition"
-                >
-                  {demoResetLoading ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Resetting…
-                    </>
-                  ) : (
-                    'Reset Demo Data'
-                  )}
-                </button>
+                </div>
               </div>
             </div>
           )}
