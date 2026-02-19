@@ -16,41 +16,49 @@ function mulberry32(seed: number) {
   };
 }
 
+/** Tradeview AI brand identity for demo mode */
+export const DEMO_BRAND = {
+  name: 'Tradeview AI',
+  niche: 'ai trading & market insights',
+  platform: 'instagram',
+  voice: 'confident, data-driven, direct',
+};
+
 const titles = [
-  'Why Dads Need Kettlebells',
-  'Stop Doing Crunches — Try This Instead',
-  'The Dad Bod Fix in 15 Minutes',
-  '5 Exercises Every Busy Dad Should Do',
-  'The Truth About Dad Bod',
-  'Why I Quit the Gym (And You Should Too)',
-  'The 10-Minute Dad Workout That Actually Works',
-  'Stop Making Excuses — Start With One Push-Up',
-  'Kettlebells vs Dumbbells for Busy Dads',
-  'How I Lost 20 lbs Without a Gym',
-  'POV: Your Wife Catches You Mid-Workout',
-  'The One Exercise That Changed Everything',
+  'Why Most Traders Ignore This One Signal',
+  'AI vs Gut Feel — Which Wins in Volatile Markets?',
+  '3 Chart Patterns AI Catches Before You Do',
+  'The Fed Decision Playbook: What Smart Money Does',
+  'How AI Reads Sentiment Before the Market Opens',
+  'Stop Guessing Entries — Let Data Decide',
+  'The 5-Minute Pre-Market Scan That Changed My P&L',
+  'Options Flow Decoded: What the Whales Are Buying',
+  'Why 90% of Retail Traders Lose (And How AI Flips It)',
+  'Building a Trading Edge With Pattern Recognition',
+  'POV: You Let AI Pick Your Entries for a Week',
+  'The One Indicator That Actually Predicts Reversals',
 ];
 
 const ideas = [
-  '[DEMO] Why Dads Need Kettlebells',
-  '[DEMO] Stop Doing Crunches — Try This Instead',
-  '[DEMO] The Dad Bod Fix in 15 Minutes',
-  '[DEMO] 5 Exercises Every Busy Dad Should Do',
-  '[DEMO] The Truth About Dad Bod',
-  '[DEMO] Why I Quit the Gym (And You Should Too)',
+  '[DEMO] Why Most Traders Ignore This One Signal',
+  '[DEMO] AI vs Gut Feel — Which Wins?',
+  '[DEMO] 3 Chart Patterns AI Catches First',
+  '[DEMO] The Fed Decision Playbook',
+  '[DEMO] How AI Reads Sentiment Pre-Market',
+  '[DEMO] Stop Guessing Entries — Use Data',
 ];
 
 const DEMO_VIDEO_URL =
   'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4';
 
 const scriptContent = {
-  hook: 'If you only have 10 minutes, do these 5 moves.',
+  hook: 'Most traders miss this signal every single morning.',
   meat: [
-    'Goblet squats — build legs and core.',
-    'Push-ups — no equipment needed.',
-    'Kettlebell swings — full body burn.',
+    'AI scans 10,000 tickers before market open.',
+    'Pattern recognition spots setups humans miss.',
+    'Sentiment analysis from social + news feeds confirms bias.',
   ],
-  cta: 'Save this and try it tomorrow.',
+  cta: 'Follow for daily AI-powered market insights.',
 };
 
 export const POST_STATUS = {
@@ -142,9 +150,9 @@ export function buildDemoContentPosts(userId: string, now: string, nextWeekIso: 
       status: POST_STATUS.SCHEDULED,
       final_video_url: DEMO_VIDEO_URL,
       scheduled_date: nextWeekIso,
-      platform: 'TikTok',
-      caption: 'Fitness dads — demo post.',
-      hashtags: ['fitness', 'dadlife', 'demo'],
+      platform: 'Reels',
+      caption: 'AI-powered market analysis — Tradeview AI demo.',
+      hashtags: ['trading', 'ai', 'marketanalysis', 'tradeviewai'],
       created_at: now,
       updated_at: now,
     });

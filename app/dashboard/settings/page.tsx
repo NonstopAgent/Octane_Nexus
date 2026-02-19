@@ -25,6 +25,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { seedDemoData } from '@/actions/seed-data';
 import DashboardPageHeader from '@/components/dashboard/DashboardPageHeader';
 import StyleTokensSection from '@/components/dashboard/StyleTokensSection';
+import { getKey, setKey as saveKey } from '@/lib/apiKeys';
 
 const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
 
@@ -76,8 +77,9 @@ export default function SettingsPage() {
   const [connectSaving, setConnectSaving] = useState(false);
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [, setNameSaving] = useState(false);
-  const [developerKeys, setDeveloperKeys] = useState({ rapidApi: '', openai: '' });
+  const [developerKeys, setDeveloperKeys] = useState({ rapidApi: '', openai: '', pexels: '' });
   const [developerSaving, setDeveloperSaving] = useState(false);
+  const [developerSaved, setDeveloperSaved] = useState(false);
   const [demoSeedLoading, setDemoSeedLoading] = useState(false);
   const [demoResetLoading, setDemoResetLoading] = useState(false);
 
@@ -115,9 +117,11 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const rapid = localStorage.getItem('octane_rapidapi_key') ?? '';
-      const openai = localStorage.getItem('octane_openai_key') ?? '';
-      setDeveloperKeys({ rapidApi: rapid, openai });
+      setDeveloperKeys({
+        rapidApi: getKey('rapidapi'),
+        openai: getKey('openai'),
+        pexels: getKey('pexels'),
+      });
     }
   }, []);
 
@@ -276,9 +280,11 @@ export default function SettingsPage() {
   function handleSaveDeveloperKeys() {
     if (typeof window === 'undefined') return;
     setDeveloperSaving(true);
-    localStorage.setItem('octane_rapidapi_key', developerKeys.rapidApi);
-    localStorage.setItem('octane_openai_key', developerKeys.openai);
-    setTimeout(() => setDeveloperSaving(false), 600);
+    if (developerKeys.rapidApi) saveKey('rapidapi', developerKeys.rapidApi);
+    if (developerKeys.openai) saveKey('openai', developerKeys.openai);
+    if (developerKeys.pexels) saveKey('pexels', developerKeys.pexels);
+    setDeveloperSaved(true);
+    setTimeout(() => { setDeveloperSaving(false); setDeveloperSaved(false); }, 1500);
   }
 
   function handleDeleteAccount() {
@@ -501,16 +507,31 @@ export default function SettingsPage() {
                     className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-amber-500 focus:outline-none"
                   />
                 </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-400 mb-1.5">Pexels Key</label>
+                  <input
+                    type="password"
+                    value={developerKeys.pexels}
+                    onChange={(e) => setDeveloperKeys((k) => ({ ...k, pexels: e.target.value }))}
+                    placeholder="••••••••••••••••"
+                    className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-amber-500 focus:outline-none"
+                  />
+                </div>
                 <button
                   type="button"
                   onClick={handleSaveDeveloperKeys}
                   disabled={developerSaving}
                   className="inline-flex items-center gap-2 rounded-lg border border-amber-500 bg-amber-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-amber-400 disabled:opacity-60 transition"
                 >
-                  {developerSaving ? (
+                  {developerSaved ? (
+                    <>
+                      <Key className="h-4 w-4" />
+                      Saved!
+                    </>
+                  ) : developerSaving ? (
                     <>
                       <Loader2 className="h-4 w-4 animate-spin" />
-                      Saved
+                      Saving…
                     </>
                   ) : (
                     <>

@@ -15,18 +15,18 @@ import {
   Tooltip,
 } from 'recharts';
 
-// Mock Connected Accounts
 type ConnectedAccount = {
   id: string;
   platform: 'Instagram' | 'YouTube';
   handle: string;
+  connected: boolean;
   followers?: string;
   subscribers?: string;
 };
 
-const CONNECTED_ACCOUNTS: ConnectedAccount[] = [
-  { id: 'ig_1', platform: 'Instagram', handle: '@logan.creates', followers: '12.5k' },
-  { id: 'yt_1', platform: 'YouTube', handle: 'Logan Alvarez', subscribers: '4.2k' },
+const EMPTY_ACCOUNTS: ConnectedAccount[] = [
+  { id: 'ig_1', platform: 'Instagram', handle: '', connected: false },
+  { id: 'yt_1', platform: 'YouTube', handle: '', connected: false },
 ];
 
 // Mock Stats Data (different for each account)
@@ -124,22 +124,35 @@ function getMilestones(accountId: string): Milestone[] {
 type SummaryData = { postsThisWeek?: number; scheduled?: number; posted?: number; streak?: number };
 
 export default function MonitoringPage() {
-  const [selectedAccountId, setSelectedAccountId] = useState<string>(CONNECTED_ACCOUNTS[0]?.id || '');
+  const [accounts, setAccounts] = useState<ConnectedAccount[]>(EMPTY_ACCOUNTS);
+  const [selectedAccountId, setSelectedAccountId] = useState<string>(EMPTY_ACCOUNTS[0]?.id || '');
   const [isDropdownOpen, setIsDropdownOpen] = useState<boolean>(false);
   const [summary, setSummary] = useState<SummaryData | null>(null);
 
   useEffect(() => {
-    const headers: Record<string, string> = {};
-    if (typeof document !== 'undefined' && document.cookie.includes('octane_demo_mode=true')) {
-      headers['x-demo-mode'] = 'true';
-    }
-    fetch('/api/monitoring/summary', { credentials: 'include', headers })
+    fetch('/api/monitoring/summary', { credentials: 'include' })
       .then((r) => r.ok ? r.json() : null)
       .then((d) => d && setSummary(d))
       .catch(() => {});
+
+    // Load real linked accounts from Supabase profile
+    import('@/lib/supabaseClient').then(({ supabase }) =>
+      supabase.auth.getUser().then(({ data: { user } }) => {
+        if (!user) return;
+        supabase.from('profiles').select('linked_accounts').eq('id', user.id).maybeSingle()
+          .then(({ data: profile }) => {
+            const la = (profile?.linked_accounts as Record<string, string | null>) ?? {};
+            const list: ConnectedAccount[] = [
+              { id: 'ig_1', platform: 'Instagram', handle: la.instagram ?? '', connected: !!la.instagram },
+              { id: 'yt_1', platform: 'YouTube', handle: la.youtube ?? '', connected: !!la.youtube },
+            ];
+            setAccounts(list);
+          });
+      })
+    );
   }, []);
 
-  const selectedAccount = CONNECTED_ACCOUNTS.find(acc => acc.id === selectedAccountId);
+  const selectedAccount = accounts.find(acc => acc.id === selectedAccountId);
   const stats = STATS_DATA[selectedAccountId] || STATS_DATA['ig_1'];
   const chartData = useMemo(() => generateGrowthData(selectedAccountId), [selectedAccountId]);
   const milestones = useMemo(() => getMilestones(selectedAccountId), [selectedAccountId]);
@@ -165,6 +178,7 @@ export default function MonitoringPage() {
   }
 
   function formatFollowerCount(account: ConnectedAccount): string {
+    if (!account.connected) return 'Not connected';
     if (account.followers) return account.followers;
     if (account.subscribers) return account.subscribers;
     return '0';
@@ -211,7 +225,7 @@ export default function MonitoringPage() {
 
         {/* Account Switcher */}
         <div className="flex items-center gap-3">
-          {CONNECTED_ACCOUNTS.length === 0 ? (
+          {accounts.filter(a => a.connected).length === 0 ? (
             <button
               type="button"
               onClick={handleConnectAccount}
@@ -235,7 +249,7 @@ export default function MonitoringPage() {
                       return (
                         <>
                           <Icon className="h-4 w-4" />
-                          <span className="text-slate-300">{selectedAccount.handle}</span>
+                          <span className="text-slate-300">{selectedAccount.connected ? selectedAccount.handle : 'Not connected'}</span>
                         </>
                       );
                     })()}
@@ -252,7 +266,7 @@ export default function MonitoringPage() {
                     />
                     <div className="absolute right-0 mt-2 w-64 rounded-xl border border-slate-800 bg-slate-950 shadow-xl z-20">
                       <div className="p-2 space-y-1">
-                        {CONNECTED_ACCOUNTS.map((account) => {
+                        {accounts.map((account) => {
                           const Icon = getPlatformIcon(account.platform);
                           const isSelected = account.id === selectedAccountId;
                           return (
@@ -271,7 +285,7 @@ export default function MonitoringPage() {
                             >
                               <Icon className="h-4 w-4 flex-shrink-0" />
                               <div className="flex-1 text-left min-w-0">
-                                <div className="text-sm font-medium truncate">{account.handle}</div>
+                                <div className="text-sm font-medium truncate">{account.connected ? account.handle : 'Not connected'}</div>
                                 <div className="text-xs text-slate-500">
                                   {account.platform} • {formatFollowerCount(account)}
                                 </div>

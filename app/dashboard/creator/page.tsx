@@ -2,35 +2,32 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Zap, TrendingUp, LayoutGrid, Scissors, Calendar, BookOpen, BarChart3, Loader2, ArrowRight } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Zap, TrendingUp, LayoutGrid, Scissors, Calendar, BookOpen, BarChart3, Loader2, ArrowRight, Sparkles } from 'lucide-react';
 import SystemStatusBanner from '@/components/dashboard/SystemStatusBanner';
 
 type Pipeline = Record<string, number>;
 type TopAction = { label: string; href: string; cta: string };
 
+const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
+
 export default function CreatorDailyLoopPage() {
+  const router = useRouter();
   const [pipeline, setPipeline] = useState<Pipeline | null>(null);
   const [topActions, setTopActions] = useState<TopAction[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  const isDemoMode =
-    (typeof window !== 'undefined' && process.env.NEXT_PUBLIC_DEMO_MODE === 'true') ||
-    (typeof document !== 'undefined' && document.cookie.includes('octane_demo_mode=true'));
+  const [seeding, setSeeding] = useState(false);
 
   useEffect(() => {
     async function fetchToday() {
       setLoading(true);
       setError(null);
       try {
-        const headers: Record<string, string> = {};
-        if (isDemoMode || (typeof document !== 'undefined' && document.cookie.includes('octane_demo_mode=true'))) {
-          headers['x-demo-mode'] = 'true';
-        }
-        const res = await fetch('/api/creator/today', { credentials: 'include', headers });
+        const res = await fetch('/api/creator/today', { credentials: 'include' });
         if (!res.ok) {
-          if (res.status === 401) {
-            setError('Sign in or enable demo mode to view your creator pipeline.');
+          if (res.status === 401 && !DEMO_MODE) {
+            setError('Sign in to view your creator pipeline.');
             return;
           }
           throw new Error('Failed to load');
@@ -45,10 +42,20 @@ export default function CreatorDailyLoopPage() {
       }
     }
     fetchToday();
-  }, [isDemoMode]);
+  }, []);
+
+  async function handleSeedAndGo() {
+    setSeeding(true);
+    try {
+      await fetch('/api/demo/seed', { method: 'POST', credentials: 'include' });
+      router.push('/dashboard/production');
+    } catch {
+      setSeeding(false);
+    }
+  }
 
   const hubLinks = [
-    { href: '/trends', label: 'Trends', icon: TrendingUp },
+    { href: '/dashboard/trends', label: 'Trends', icon: TrendingUp },
     { href: '/dashboard/production', label: 'Production', icon: LayoutGrid },
     { href: '/dashboard/post-lab', label: 'Post Lab', icon: Zap },
     { href: '/dashboard/clip-studio', label: 'Clip Studio', icon: Scissors },
@@ -71,7 +78,25 @@ export default function CreatorDailyLoopPage() {
         </div>
       </div>
 
-      {error && (
+      {/* Demo CTA: seed and jump into the workflow */}
+      {DEMO_MODE && !pipeline && !loading && (
+        <div className="rounded-2xl border border-amber-500/30 bg-gradient-to-br from-amber-500/10 to-slate-950 p-8 text-center space-y-4">
+          <Sparkles className="h-10 w-10 text-amber-400 mx-auto" />
+          <h2 className="text-xl font-bold text-slate-50">Enter Tradeview AI Demo</h2>
+          <p className="text-sm text-slate-400 max-w-md mx-auto">
+            Load sample posts, scripts, and style tokens for the Tradeview AI brand, then start the creator daily loop.
+          </p>
+          <button
+            onClick={handleSeedAndGo}
+            disabled={seeding}
+            className="inline-flex items-center gap-2 rounded-full border-2 border-amber-500 bg-amber-500 px-6 py-3 text-sm font-semibold text-slate-950 hover:bg-amber-400 disabled:opacity-60 transition"
+          >
+            {seeding ? <><Loader2 className="h-4 w-4 animate-spin" /> Seeding…</> : <><Zap className="h-4 w-4" /> Enter Tradeview AI Demo</>}
+          </button>
+        </div>
+      )}
+
+      {error && !DEMO_MODE && (
         <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
           {error}
         </div>
@@ -88,10 +113,7 @@ export default function CreatorDailyLoopPage() {
             <h2 className="text-lg font-semibold text-slate-50 mb-4">Pipeline</h2>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4">
               {['idea', 'scripting', 'filming', 'ready', 'scheduled', 'posted'].map((status) => (
-                <div
-                  key={status}
-                  className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 text-center"
-                >
+                <div key={status} className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 text-center">
                   <p className="text-2xl font-bold text-amber-400">{pipeline[status] ?? 0}</p>
                   <p className="text-xs text-slate-400 capitalize">{status}</p>
                 </div>

@@ -125,18 +125,13 @@ export async function POST(req: NextRequest) {
       }, { onConflict: 'user_id' });
     }
 
-    // 6) Optional: add demo linked account for Monitoring if none set (skip for demo user with no profile)
-    const { data: profile } = await db.from('profiles').select('linked_accounts').eq('id', userId).maybeSingle();
-    const linked = (profile?.linked_accounts as Record<string, string> | null) ?? {};
-    const hasAny = linked.instagram || linked.tiktok || linked.youtube || linked.x;
-    if (!hasAny && user) {
+    // 6) Set Tradeview AI brand identity on profile (skip linked_accounts — demo never fakes connections)
+    if (user) {
       await db
         .from('profiles')
         .update({
-          linked_accounts: {
-            ...linked,
-            instagram: '@demo_user',
-          },
+          brand_vision: 'Tradeview AI — AI-powered trading insights',
+          niche: 'ai trading & market insights',
         })
         .eq('id', userId);
     }
