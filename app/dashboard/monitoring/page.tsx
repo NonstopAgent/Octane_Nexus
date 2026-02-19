@@ -5,6 +5,7 @@ import { Users, Eye, Heart, MousePointerClick, TrendingUp, Award, Flame, Target,
 import RealityCheck from '@/components/dashboard/RealityCheck';
 import SystemStatusBanner from '@/components/dashboard/SystemStatusBanner';
 import PostedPostsSection from '@/components/dashboard/PostedPostsSection';
+import { getDisplayHandle } from '@/lib/linkedAccounts';
 import {
   ResponsiveContainer,
   AreaChart,
@@ -141,10 +142,12 @@ export default function MonitoringPage() {
         if (!user) return;
         supabase.from('profiles').select('linked_accounts').eq('id', user.id).maybeSingle()
           .then(({ data: profile }) => {
-            const la = (profile?.linked_accounts as Record<string, string | null>) ?? {};
+            const la = profile?.linked_accounts ?? {};
+            const igDisplay = getDisplayHandle(la, 'instagram');
+            const ytDisplay = getDisplayHandle(la, 'youtube');
             const list: ConnectedAccount[] = [
-              { id: 'ig_1', platform: 'Instagram', handle: la.instagram ?? '', connected: !!la.instagram },
-              { id: 'yt_1', platform: 'YouTube', handle: la.youtube ?? '', connected: !!la.youtube },
+              { id: 'ig_1', platform: 'Instagram', handle: igDisplay === 'Not connected' ? '' : igDisplay, connected: igDisplay !== 'Not connected' },
+              { id: 'yt_1', platform: 'YouTube', handle: ytDisplay === 'Not connected' ? '' : ytDisplay, connected: ytDisplay !== 'Not connected' },
             ];
             setAccounts(list);
           });

@@ -18,6 +18,7 @@ export default function CreatorDailyLoopPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [seeding, setSeeding] = useState(false);
+  const [demoSeeded, setDemoSeeded] = useState<boolean | null>(null);
 
   useEffect(() => {
     async function fetchToday() {
@@ -28,6 +29,7 @@ export default function CreatorDailyLoopPage() {
         if (!res.ok) {
           if (res.status === 401 && !DEMO_MODE) {
             setError('Sign in to view your creator pipeline.');
+            setLoading(false);
             return;
           }
           throw new Error('Failed to load');
@@ -44,10 +46,19 @@ export default function CreatorDailyLoopPage() {
     fetchToday();
   }, []);
 
+  useEffect(() => {
+    if (!DEMO_MODE) return;
+    fetch('/api/demo/status', { credentials: 'include' })
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => setDemoSeeded(d?.seeded ?? false))
+      .catch(() => setDemoSeeded(false));
+  }, []);
+
   async function handleSeedAndGo() {
     setSeeding(true);
     try {
       await fetch('/api/demo/seed', { method: 'POST', credentials: 'include' });
+      setDemoSeeded(true);
       router.push('/dashboard/production');
     } catch {
       setSeeding(false);
@@ -78,21 +89,38 @@ export default function CreatorDailyLoopPage() {
         </div>
       </div>
 
-      {/* Demo CTA: seed and jump into the workflow */}
-      {DEMO_MODE && !pipeline && !loading && (
+      {/* Demo CTA: idempotent — show "Go to Production" if already seeded, else "Enter Tradeview AI Demo" */}
+      {DEMO_MODE && !pipeline && !loading && demoSeeded !== null && (
         <div className="rounded-2xl border border-amber-500/30 bg-gradient-to-br from-amber-500/10 to-slate-950 p-8 text-center space-y-4">
           <Sparkles className="h-10 w-10 text-amber-400 mx-auto" />
-          <h2 className="text-xl font-bold text-slate-50">Enter Tradeview AI Demo</h2>
-          <p className="text-sm text-slate-400 max-w-md mx-auto">
-            Load sample posts, scripts, and style tokens for the Tradeview AI brand, then start the creator daily loop.
-          </p>
-          <button
-            onClick={handleSeedAndGo}
-            disabled={seeding}
-            className="inline-flex items-center gap-2 rounded-full border-2 border-amber-500 bg-amber-500 px-6 py-3 text-sm font-semibold text-slate-950 hover:bg-amber-400 disabled:opacity-60 transition"
-          >
-            {seeding ? <><Loader2 className="h-4 w-4 animate-spin" /> Seeding…</> : <><Zap className="h-4 w-4" /> Enter Tradeview AI Demo</>}
-          </button>
+          {demoSeeded ? (
+            <>
+              <h2 className="text-xl font-bold text-slate-50">Demo ready</h2>
+              <p className="text-sm text-slate-400 max-w-md mx-auto">
+                Your Tradeview AI demo pipeline is loaded. Go to the Production board to continue.
+              </p>
+              <Link
+                href="/dashboard/production"
+                className="inline-flex items-center gap-2 rounded-full border-2 border-amber-500 bg-amber-500 px-6 py-3 text-sm font-semibold text-slate-950 hover:bg-amber-400 transition"
+              >
+                <Zap className="h-4 w-4" /> Go to Production
+              </Link>
+            </>
+          ) : (
+            <>
+              <h2 className="text-xl font-bold text-slate-50">Enter Tradeview AI Demo</h2>
+              <p className="text-sm text-slate-400 max-w-md mx-auto">
+                Load sample posts, scripts, and style tokens for the Tradeview AI brand, then start the creator daily loop.
+              </p>
+              <button
+                onClick={handleSeedAndGo}
+                disabled={seeding}
+                className="inline-flex items-center gap-2 rounded-full border-2 border-amber-500 bg-amber-500 px-6 py-3 text-sm font-semibold text-slate-950 hover:bg-amber-400 disabled:opacity-60 transition"
+              >
+                {seeding ? <><Loader2 className="h-4 w-4 animate-spin" /> Seeding…</> : <><Zap className="h-4 w-4" /> Enter Tradeview AI Demo</>}
+              </button>
+            </>
+          )}
         </div>
       )}
 
