@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabaseClient';
-import { getEffectiveUserId } from '@/lib/auth';
+import { getEffectiveUserId, DEMO_USER_ID } from '@/lib/auth';
 import { generateMetadata } from '@/actions/generate-metadata';
 import { schedulePost } from '@/actions/schedule-post';
 import { renderPostAction } from '@/actions/render-post';
@@ -32,6 +32,8 @@ import {
 import { FileText, ClipboardCheck } from 'lucide-react';
 import DashboardPageHeader from '@/components/dashboard/DashboardPageHeader';
 import DemoNudge from '@/components/ui/DemoNudge';
+import { getPlayableVideoUrl } from '@/lib/playableUrl';
+import BRollPanel from '@/components/dashboard/BRollPanel';
 
 type PlatformKey = 'TikTok' | 'Shorts' | 'Reels';
 type ContentPost = {
@@ -49,9 +51,12 @@ type ContentPost = {
   hashtags?: string[] | null;
   scheduled_date?: string | null;
   platform?: string | null;
+  style_token_id?: string | null;
   created_at: string;
   updated_at: string;
 };
+
+type StyleTokenOption = { id: string; name: string; is_default: boolean };
 
 const PLATFORM_OPTIONS: { key: PlatformKey; label: string; dbValue: string }[] = [
   { key: 'TikTok', label: 'TikTok', dbValue: 'TikTok' },
@@ -64,12 +69,12 @@ const FALLBACK_VIDEO_URL =
 
 function getPreviewVideoUrl(post: ContentPost | null): string {
   if (!post) return FALLBACK_VIDEO_URL;
-  if (post.status === POST_STATUS.READY && post.final_video_url?.trim()) {
-    return post.final_video_url.trim();
-  }
-  if (post.background_video_url?.trim()) {
-    return post.background_video_url.trim();
-  }
+  const finalUrl = post.status === POST_STATUS.READY && post.final_video_url?.trim()
+    ? getPlayableVideoUrl(post.final_video_url)
+    : '';
+  if (finalUrl) return finalUrl;
+  const bgUrl = getPlayableVideoUrl(post.background_video_url);
+  if (bgUrl) return bgUrl;
   return FALLBACK_VIDEO_URL;
 }
 
@@ -124,11 +129,29 @@ export default function PostLabPage() {
   } | null>(null);
   const [libraryPrefill, setLibraryPrefill] = useState<PostLabPrefill | null>(null);
   const [creatingFromPrefill, setCreatingFromPrefill] = useState(false);
+  const [creatingSample, setCreatingSample] = useState(false);
   const [showLogOutcome, setShowLogOutcome] = useState(false);
+  const [styleTokens, setStyleTokens] = useState<StyleTokenOption[]>([]);
+  const [defaultStyleName, setDefaultStyleName] = useState<string | null>(null);
+  const [styleSwitchLoading, setStyleSwitchLoading] = useState(false);
 
   useEffect(() => {
     setLibraryPrefill(getPostLabPrefill());
   }, []);
+
+  useEffect(() => {
+    if (!userId) return;
+    (async () => {
+      const [settingsRes, tokensRes] = await Promise.all([
+        fetch('/api/user-settings', { credentials: 'include' }),
+        fetch('/api/style-tokens', { credentials: 'include' }),
+      ]);
+      const settings = settingsRes.ok ? await settingsRes.json().catch(() => null) : null;
+      const tokens = tokensRes.ok ? await tokensRes.json().catch(() => []) : [];
+      setDefaultStyleName(settings?.default_style_token?.name ?? null);
+      setStyleTokens(Array.isArray(tokens) ? tokens.map((t: { id: string; name: string; is_default: boolean }) => ({ id: t.id, name: t.name, is_default: t.is_default })) : []);
+    })();
+  }, [userId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -164,20 +187,34 @@ export default function PostLabPage() {
             [libraryPrefill.scriptScaffold.trim()] :
             undefined,
       };
-      const { error: insertErr } = await supabase.from('content_posts').insert({
-        user_id: userId,
-        title,
-        script_content: scriptContent,
-        status: POST_STATUS.SCRIPTING,
-      });
-      if (insertErr) throw insertErr;
+      if (userId === DEMO_USER_ID) {
+        const res = await fetch('/api/post-lab/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ title, script_content: scriptContent }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data?.error || res.statusText);
+        }
+      } else {
+        const { error: insertErr } = await supabase.from('content_posts').insert({
+          user_id: userId,
+          title,
+          script_content: scriptContent,
+          status: POST_STATUS.SCRIPTING,
+        });
+        if (insertErr) throw insertErr;
+      }
       clearPostLabPrefill();
       setLibraryPrefill(null);
       await fetchPosts();
       toast.success('Idea created from Library format. Move it to Filming in Production when ready.');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to create idea');
-      toast.error('Failed to create idea from format');
+      const msg = e instanceof Error ? e.message : 'Failed to create idea';
+      setError(msg);
+      toast.error(msg);
     } finally {
       setCreatingFromPrefill(false);
     }
@@ -185,6 +222,29 @@ export default function PostLabPage() {
 
   async function fetchPosts() {
     if (!userId) return;
+    if (userId === DEMO_USER_ID) {
+      try {
+        const res = await fetch('/api/post-lab/queue', { credentials: 'include' });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          toast.error(data?.error || 'Failed to load queue');
+          setPosts([]);
+          return;
+        }
+        const data = await res.json();
+        const list = Array.isArray(data) ? data : [];
+        setPosts(list as ContentPost[]);
+        if (activePost) {
+          const updated = list.find((p: ContentPost) => p.id === activePost.id);
+          if (updated) setActivePost(updated);
+        }
+      } catch (e) {
+        console.error(e);
+        toast.error('Failed to load queue');
+        setPosts([]);
+      }
+      return;
+    }
     const { data, error: fetchErr } = await supabase
       .from('content_posts')
       .select('*')
@@ -212,14 +272,26 @@ export default function PostLabPage() {
 
     void (async () => {
       try {
-        const { data, error: fetchErr } = await supabase
-          .from('content_posts')
-          .select('*')
-          .eq('user_id', userId)
-          .in('status', [...POST_LAB_STATUSES])
-          .order('updated_at', { ascending: false });
-        if (fetchErr) console.error(fetchErr);
-        setPosts((data as ContentPost[]) || []);
+        if (userId === DEMO_USER_ID) {
+          const res = await fetch('/api/post-lab/queue', { credentials: 'include' });
+          if (res.ok) {
+            const data = await res.json();
+            setPosts(Array.isArray(data) ? (data as ContentPost[]) : []);
+          } else {
+            setPosts([]);
+          }
+        } else {
+          const { data, error: fetchErr } = await supabase
+            .from('content_posts')
+            .select('*')
+            .eq('user_id', userId)
+            .in('status', [...POST_LAB_STATUSES])
+            .order('updated_at', { ascending: false });
+          if (fetchErr) console.error(fetchErr);
+          setPosts((data as ContentPost[]) || []);
+        }
+      } catch {
+        setPosts([]);
       } finally {
         setLoading(false);
       }
@@ -264,14 +336,34 @@ export default function PostLabPage() {
     setError(null);
     setGenerating(true);
     try {
-      const result = await generateMetadata(activePost.id);
-      if ('error' in result) {
-        setError(result.error);
-        return;
+      if (userId === DEMO_USER_ID) {
+        const res = await fetch('/api/post-lab/generate-metadata', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ postId: activePost.id }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          setError(data?.error || 'Failed to generate');
+          toast.error(data?.error || 'Failed to generate caption & tags');
+          return;
+        }
+        setCaption(data.caption || '');
+        setHashtagsInput(Array.isArray(data.hashtags) ? data.hashtags.join(' ') : '');
+        await fetchPosts();
+        toast.success('Caption & tags generated');
+      } else {
+        const result = await generateMetadata(activePost.id);
+        if ('error' in result) {
+          setError(result.error);
+          toast.error(result.error);
+          return;
+        }
+        setCaption(result.caption);
+        setHashtagsInput(result.hashtags.join(' '));
+        await fetchPosts();
       }
-      setCaption(result.caption);
-      setHashtagsInput(result.hashtags.join(' '));
-      await fetchPosts();
     } finally {
       setGenerating(false);
     }
@@ -285,23 +377,54 @@ export default function PostLabPage() {
       .filter(Boolean)
       .map((t) => (t.startsWith('#') ? t : '#' + t));
 
+    if (!scheduledDate || !scheduledDate.trim()) {
+      setError('Please pick a date');
+      toast.error('Please pick a date');
+      return;
+    }
+
     setError(null);
     setScheduling(true);
     try {
-      const { error: sErr } = await schedulePost({
-        postId: activePost.id,
-        caption,
-        hashtags: tags,
-        scheduledDate: scheduledDate || null,
-        platform: PLATFORM_OPTIONS.find((p) => p.key === platform)?.dbValue || 'TikTok',
-      });
-      if (sErr) {
-        setError(sErr);
-        toast.error(sErr);
-        return;
+      if (userId === DEMO_USER_ID) {
+        const res = await fetch(`/api/post-lab/posts/${activePost.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            caption: caption || null,
+            hashtags: tags,
+            scheduled_date: new Date(scheduledDate).toISOString(),
+            platform: PLATFORM_OPTIONS.find((p) => p.key === platform)?.dbValue || 'TikTok',
+            status: POST_STATUS.SCHEDULED,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          setError(data?.error || 'Failed to schedule');
+          toast.error(data?.error || res.status === 404 ? 'Post not found' : 'Failed to schedule');
+          return;
+        }
+        setPosts((prev) => prev.filter((p) => p.id !== activePost.id));
+        setActivePost(null);
+        toast.success('Post scheduled');
+      } else {
+        const { error: sErr } = await schedulePost({
+          postId: activePost.id,
+          caption,
+          hashtags: tags,
+          scheduledDate: scheduledDate || null,
+          platform: PLATFORM_OPTIONS.find((p) => p.key === platform)?.dbValue || 'TikTok',
+        });
+        if (sErr) {
+          setError(sErr);
+          toast.error(sErr);
+          return;
+        }
+        setPosts((prev) => prev.filter((p) => p.id !== activePost.id));
+        setActivePost(null);
+        toast.success('Post scheduled');
       }
-      setPosts((prev) => prev.filter((p) => p.id !== activePost.id));
-      setActivePost(null);
     } finally {
       setScheduling(false);
     }
@@ -408,13 +531,52 @@ export default function PostLabPage() {
             <p className="mt-2 max-w-sm text-sm text-slate-400">
               Move videos to Filming or Ready in Production, then they&apos;ll show up here.
             </p>
-            <Link
-              href="/dashboard/production"
-              className="mt-6 inline-flex items-center gap-2 rounded-lg border border-amber-500 bg-amber-500 px-5 py-2.5 text-sm font-semibold text-slate-950 hover:bg-amber-400 transition"
-            >
-              <ArrowRight className="h-4 w-4" />
-              Go to Production
-            </Link>
+            <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+              <Link
+                href="/dashboard/production"
+                className="inline-flex items-center gap-2 rounded-lg border border-amber-500 bg-amber-500 px-5 py-2.5 text-sm font-semibold text-slate-950 hover:bg-amber-400 transition"
+              >
+                <ArrowRight className="h-4 w-4" />
+                Go to Production
+              </Link>
+              {userId === DEMO_USER_ID && (
+                <button
+                  type="button"
+                  disabled={creatingSample}
+                  onClick={async () => {
+                    setCreatingSample(true);
+                    setError(null);
+                    try {
+                      const res = await fetch('/api/post-lab/create', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'include',
+                        body: JSON.stringify({
+                          title: 'Demo draft',
+                          script_content: { hook: 'Sample for Production' },
+                          status: POST_STATUS.FILMING,
+                        }),
+                      });
+                      const data = await res.json().catch(() => ({}));
+                      if (!res.ok) {
+                        toast.error(data?.error || 'Failed to create draft');
+                        return;
+                      }
+                      await fetchPosts();
+                      toast.success('Demo draft created. It appears here and on Production.');
+                    } catch (e) {
+                      toast.error(e instanceof Error ? e.message : 'Failed to create draft');
+                    } finally {
+                      setCreatingSample(false);
+                    }
+                  }}
+                  className="inline-flex items-center gap-2 rounded-lg border border-slate-600 bg-slate-800 px-5 py-2.5 text-sm font-semibold text-slate-200 hover:bg-slate-700 disabled:opacity-50 transition"
+                >
+                  {creatingSample ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                  Create sample draft
+                </button>
+              )}
+            </div>
           </div>
         </div>
       ) : (
@@ -466,6 +628,52 @@ export default function PostLabPage() {
               </div>
             ) : (
               <>
+                {/* Style */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs text-slate-400">Using Style:</span>
+                  <select
+                    value={activePost.style_token_id ?? ''}
+                    disabled={styleSwitchLoading}
+                    onChange={async (e) => {
+                      const val = e.target.value;
+                      const tokenId = val === '' ? null : val;
+                      if (!activePost) return;
+                      setStyleSwitchLoading(true);
+                      try {
+                        const res = await fetch(`/api/post-lab/posts/${activePost.id}`, {
+                          method: 'PATCH',
+                          headers: { 'Content-Type': 'application/json' },
+                          credentials: 'include',
+                          body: JSON.stringify({ style_token_id: tokenId }),
+                        });
+                        if (!res.ok) {
+                          const data = await res.json().catch(() => ({}));
+                          toast.error(data?.error ?? 'Failed to update style');
+                          return;
+                        }
+                        await fetchPosts();
+                        setActivePost((p) => (p && p.id === activePost.id ? { ...p, style_token_id: tokenId } : p));
+                      } finally {
+                        setStyleSwitchLoading(false);
+                      }
+                    }}
+                    className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-sm text-slate-200 focus:border-amber-500 focus:outline-none"
+                  >
+                    <option value="">{defaultStyleName ?? 'Default'}</option>
+                    {styleTokens.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}{t.is_default ? ' (default)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* B-Roll */}
+                <BRollPanel
+                  postId={activePost.id}
+                  onBackgroundSet={() => fetchPosts()}
+                />
+
                 {/* Preview + Platform Toggle */}
                 <div>
                   <div className="flex items-center justify-between mb-2">
