@@ -87,6 +87,7 @@ Run **`npm run qa`** to run lint → build → Playwright smoke (`tests/smoke.sp
 
 ## Contributing
 
+- **Notion:** Every PR must include a Notion Task URL and update the Notion row status. See [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/NOTION.md](docs/NOTION.md).
 - **Branch naming:** `lin-<issue-id>-<short-slug>` (e.g. `lin-123-add-sentry`).
 - **PR checklist** (paste into your PR description and confirm each item):
   - [ ] `npm run build` exits 0
