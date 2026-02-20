@@ -1,65 +1,45 @@
 # Notion as single source of truth (SSOT)
 
-We use **Notion** (not Slack) as the SSOT for backlog, bugs, decisions, and test runs. This doc is guidance only; no Notion API integration is required in the repo.
+We use **Notion** (not Slack) as the SSOT for backlog, bugs, decisions, and test runs. This doc matches the database schema we use.
 
-## Proposed Notion structure
+## Backlog database schema
 
-Keep it simple and practical:
-
-### 1. Backlog database
+**Properties:**
 
 | Property   | Purpose                          |
 |-----------|-----------------------------------|
-| Title     | Short name of the work item       |
-| Type      | Feature / Chore / Fix / Doc       |
-| Priority  | P0 / P1 / P2                     |
-| Status    | Todo / In progress / Done        |
-| Owner     | Who’s responsible                |
-| Link to PR| URL to GitHub PR when opened     |
+| Name      | Short name of the work item       |
+| Status    | Todo / In Progress / Blocked / Done |
+| Priority  | P0 / P1 / P2 (or your scale)     |
+| Area      | Area of the product (e.g. Post Lab, Clip Studio) |
+| Tags      | Optional tags for filtering      |
+| PR Link   | URL to GitHub PR when opened     |
+| Notes     | Acceptance criteria, context     |
 
-Use for: what we’re building, in what order, and how it ties to code (PR link).
+**Views:**
 
-### 2. Bugs database
+- **All Items** — full list
+- **By Status** — grouped by Status
+- **By Priority** — grouped by Priority
+- **Active Work** — filter: **Status** is **In Progress** or **Blocked**
 
-| Property     | Purpose                    |
-|-------------|----------------------------|
-| Title       | One-line summary           |
-| Steps       | How to reproduce           |
-| Expected    | What should happen         |
-| Actual      | What happens instead       |
-| Severity    | Blocker / High / Medium / Low |
-| Status      | Open / In progress / Fixed |
+Use for: what we're building, in what order, and how it ties to code (PR Link).
 
-Use for: triage and reproduction without digging through chat.
+## Optional: Bugs / Decisions / Test runs
 
-### 3. Decisions log
-
-| Property     | Purpose                    |
-|-------------|----------------------------|
-| Date        | When the decision was made |
-| Decision    | One-line summary           |
-| Context     | Why we decided this        |
-| Consequences| What we accept or follow up |
-
-Use for: “why we did it this way” without scrolling through history.
-
-### 4. Test runs
-
-| Property  | Purpose                |
-|----------|-------------------------|
-| Date     | When the run happened   |
-| Build SHA| Git commit (or link)    |
-| Result   | Pass / Fail             |
-| Notes    | Branch, env, flakiness  |
-
-Use for: quick view of recent CI/local run outcomes.
-
----
+You can add separate databases for Bugs (Steps, Expected/Actual, Severity, Status), Decisions (Date, Decision, Context, Consequences), and Test Runs (Date, Build SHA, Result, Notes). The **backlog** above is the one every PR must link to.
 
 ## When the Notion app is installed in Cursor
 
-- **Pulling context into prompts:** Open the relevant Notion page (e.g. Backlog or a bug) and reference it in the chat: “Use the acceptance criteria from [Notion link]” or “Reproduce using the steps in [bug link].”
-- **DoD / QA:** Keep the [Definition of Done and 10-min script](QA.md) in the repo (`docs/QA.md`) so Cursor and humans both use the same checklist; you can paste or link that doc in Notion for visibility.
-- **PRD and decisions:** Keep `docs/PRD.md` and this Notion structure in sync by hand: when we lock a decision or scope change, update Notion and optionally a line in `docs/PRD.md` or `docs/NOTION.md`.
+- **Pulling context into prompts:** Open the relevant Notion page and reference it: “Use the acceptance criteria from [Notion link].”
+- **DoD / QA:** Keep [docs/QA.md](QA.md) in the repo; you can link it from Notion for visibility.
+- **PRD:** [docs/PRD.md](PRD.md) is the MVP spec; keep Notion rows in sync when scope changes.
 
-No API or automation is required; the Notion app in Cursor is for **manual** copy/link of context into prompts.
+## Optional automation (BYOK)
+
+If you enable the Notion sync workflow (see repo `.github/workflows/notion-sync.yml` and `scripts/notion-sync-pr.ts`), set these **secrets** in GitHub (never commit them):
+
+- **NOTION_TOKEN** — Notion integration token (create in Notion → Settings → Connections)
+- **NOTION_DATABASE_ID** — ID of the backlog database (from the database URL: `notion.so/...?v=...` or from the page URL when opened as full page)
+
+The sync updates **PR Link** and **Status** from PR events (opened → In Progress, merged → Done, closed unmerged → Blocked). If secrets are missing or the PR is from a fork, the workflow skips cleanly and does not fail CI.

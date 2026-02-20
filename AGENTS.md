@@ -2,8 +2,10 @@
 
 Use this file when working autonomously in Cursor (YOLO mode, Agent mode, or multi-agent workflows).
 
+**MVP v1 scope:** Creator Daily Loop (Trends → Production → Post Lab → Clip Studio → Schedule → Monitoring). For current scope and DoD, **prioritize** [docs/PRD.md](docs/PRD.md), [docs/QA.md](docs/QA.md), [docs/NOTION.md](docs/NOTION.md), and [.cursor/context.md](.cursor/context.md). Identity/Lab features exist but are not the MVP v1 focus.
+
 ## Project Context
-Octane Nexus is a creator terminal: Identity Sniper, Algorithm Lab, Active Librarian. Next.js 14, TypeScript, Supabase, Stripe, Gemini AI.
+Octane Nexus is a creator terminal: Identity Sniper, Algorithm Lab, Active Librarian. Next.js 14, TypeScript, Supabase, Stripe, Gemini AI. **Current MVP v1:** Creator Daily Loop with Tradeview AI demo identity.
 
 ## Rules & Skills
 - **Rules**: `.cursor/rules/octane-nexus.mdc` – conventions, tech stack, data model, UI patterns

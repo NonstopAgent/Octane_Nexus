@@ -11,3 +11,5 @@
 **API keys & banners:** Stored in **browser localStorage** via `lib/apiKeys.ts` (openai, pexels, rapidapi). Changes dispatch `KEYS_CHANGED_EVENT`; `SystemStatusBanner` and UI react instantly. Do not hardcode keys.
 
 **Handles:** Do not hardcode social handles. Display handle only when `profiles.linked_accounts` has a value for that platform; use `lib/linkedAccounts.ts` `getDisplayHandle()`. Otherwise show “Not connected”.
+
+**SSOT:** Notion is the only SSOT for backlog, bugs, decisions, and test runs. Every code change must map to exactly one Notion row. PRs must link the Notion row (Notion Task URL in PR description). Update the Notion row status when opening/merging/closing the PR. See [docs/NOTION.md](docs/NOTION.md) for schema (Name, Status, Priority, Area, Tags, PR Link, Notes) and [.github/pull_request_template.md](.github/pull_request_template.md) for the required field.
