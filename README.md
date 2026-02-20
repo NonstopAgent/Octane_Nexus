@@ -2,6 +2,8 @@
 
 Creator daily loop MVP: discover ideas → production → post lab → clip studio → schedule → monitoring.
 
+**Docs:** [PRD (MVP spec)](docs/PRD.md) · [QA (DoD + 10-min test)](docs/QA.md) · [Notion SSOT guide](docs/NOTION.md)
+
 ## 5-minute setup (local)
 
 1. **Install and run**
