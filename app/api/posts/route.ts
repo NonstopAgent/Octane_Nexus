@@ -50,6 +50,7 @@ export async function POST(req: NextRequest) {
       background_video_url: body.background_video_url || null,
       style_token_id: body.style_token_id || null,
       source_url: body.source_url || null,
+      rights_attested: body.rights_attested === true,
       scheduled_date: body.scheduled_date || body.scheduled_at || null,
       platform: body.platform || null,
     };

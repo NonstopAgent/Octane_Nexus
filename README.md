@@ -21,10 +21,22 @@ Creator daily loop MVP: discover ideas → production → post lab → clip stud
    ```env
    NEXT_PUBLIC_DEMO_MODE=true
    ```
+   Optional for Sentry (client + server):
+   ```env
+   SENTRY_DSN=your_sentry_dsn
+   NEXT_PUBLIC_SENTRY_DSN=your_sentry_dsn
+   SENTRY_AUTH_TOKEN=optional_for_ci_source_maps
+   ```
+   To verify Sentry: with `npm run dev` and `SENTRY_DSN` set, open `/api/sentry-test` (dev-only; returns 404 in production).
 
 3. **Database**
-   - Run Supabase migrations: `supabase db push`  
-   - Or paste the SQL from `supabase/migrations/*.sql` into the Supabase SQL editor (in order).
+   - From the project root (no global Supabase install required):
+     ```bash
+     npm run db:push
+     ```
+   - Or with Supabase CLI: `npx supabase db push`.
+   - Alternatively, paste the SQL from `supabase/migrations/*.sql` into the Supabase SQL editor **in filename order**.
+   - **DB health (MVP):** All migrations in `supabase/migrations/` are required for the MVP; apply them in order (oldest first). Local: `npm run db:reset` resets DB and reapplies migrations; `npm run db:types` regenerates `lib/database.types.ts` from the local schema.
 
 4. Open [http://localhost:3000](http://localhost:3000).
 
@@ -47,9 +59,31 @@ Creator daily loop MVP: discover ideas → production → post lab → clip stud
 - Set the same env vars in the Vercel project (Supabase URL/keys, optional `NEXT_PUBLIC_DEMO_MODE=true`).
 - No long-running server jobs; safe for serverless.
 
+## Vercel Preview QA
+
+- **Required env vars** on Preview (and Production): `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`. Optional: `NEXT_PUBLIC_DEMO_MODE=true`, `SENTRY_DSN`, `SENTRY_AUTH_TOKEN` (for source maps in CI).
+- **Demo mode on Preview:** Same as local: set `NEXT_PUBLIC_DEMO_MODE=true` on the Preview environment. Use **Settings → Demo Data** → Seed Demo Data, then run through: Trends → Production → Post Lab → Clip Studio → Schedule → Monitoring. No static export; route handlers may be dynamic.
+
 ## Scripts
 
 - `npm run dev` — development server  
 - `npm run build` — production build  
 - `npm run start` — start production server  
-- `npm run lint` — ESLint
+- `npm run lint` — ESLint  
+- `npm run db:push` — apply migrations (no global Supabase; uses `npx supabase db push`)  
+- `npm run db:reset` — reset DB and reapply migrations  
+- `npm run db:types` — generate `lib/database.types.ts` from local schema  
+
+**CI:** Use `npx supabase db push` (or `npm run db:push`) in CI when the project is linked; same env as local for Supabase.
+
+---
+
+## Contributing
+
+- **Branch naming:** `lin-<issue-id>-<short-slug>` (e.g. `lin-123-add-sentry`).
+- **PR checklist** (paste into your PR description and confirm each item):
+  - [ ] `npm run build` exits 0
+  - [ ] Demo seed works (Settings → Demo Data → Seed; then use “Go to Production”)
+  - [ ] Key flows smoke-tested: Trends → Production → Post Lab → Clip Studio → Schedule → Monitoring (no dead ends)
+  - [ ] No secrets committed
+  - [ ] If schema changed: migration added under `supabase/migrations/` and applied

@@ -40,6 +40,7 @@ export type CreatePostInput = {
   background_video_url?: string | null;
   style_token_id?: string | null;
   source_url?: string | null;
+  rights_attested?: boolean;
   scheduled_date?: string | null;
   platform?: string | null;
 };
@@ -92,6 +93,7 @@ export async function createPost(
     background_video_url: input.background_video_url ?? null,
     style_token_id: input.style_token_id ?? null,
     source_url: input.source_url ?? null,
+    rights_attested: input.rights_attested ?? false,
     scheduled_date: input.scheduled_date ?? null,
     platform: input.platform ?? null,
   };
