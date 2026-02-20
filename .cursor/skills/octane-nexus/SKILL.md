@@ -3,6 +3,8 @@ name: octane-nexus
 description: Domain knowledge for Octane Nexus identity and dashboard flows. Use when building, extending, or debugging the Identity (Authority Architect) or Dashboard sections, or when working with profiles, blueprints, or creator workflows.
 ---
 
+**MVP v1 scope:** Creator Daily Loop (Trends → Production → Post Lab → Clip Studio → Schedule → Monitoring). This skill covers Identity and Dashboard; for MVP v1 success criteria and DoD, use [docs/PRD.md](docs/PRD.md) and [docs/QA.md](docs/QA.md) as primary.
+
 # Octane Nexus – Identity & Dashboard
 
 ## Identity (Authority Architect) – `app/identity/page.tsx`

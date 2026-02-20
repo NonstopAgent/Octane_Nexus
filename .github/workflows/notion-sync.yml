@@ -1,0 +1,33 @@
+# Optional: update Notion backlog page from PR events (PR Link + Status).
+# Safe: skips if NOTION_TOKEN missing or PR from fork; never fails CI.
+name: Notion sync
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, ready_for_review, closed]
+
+jobs:
+  notion-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Notion sync
+        env:
+          GITHUB_EVENT_PATH: ${{ github.event_path }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+        run: npx tsx scripts/notion-sync-pr.ts
+        continue-on-error: true

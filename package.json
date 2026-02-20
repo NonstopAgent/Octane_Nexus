@@ -7,7 +7,12 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "db:push": "npx supabase db push",
+    "db:reset": "npx supabase db reset",
+    "db:types": "npx supabase gen types typescript --local > lib/database.types.ts",
+    "qa": "npm run lint && npm run build && npm run test:e2e -- tests/smoke.spec.ts",
     "test:e2e": "playwright test",
+    "test:e2e:install": "playwright install --with-deps",
     "test:e2e:ui": "playwright test --ui",
     "test:explore": "playwright test tests/explorer.spec.ts"
   },
@@ -15,6 +20,7 @@
     "@ffmpeg/ffmpeg": "^0.12.15",
     "@ffmpeg/util": "^0.12.2",
     "@google/generative-ai": "^0.24.1",
+    "@sentry/nextjs": "^10.39.0",
     "@stripe/stripe-js": "^2.4.0",
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.45.4",
@@ -43,6 +49,7 @@
     "eslint-config-next": "^14.2.5",
     "postcss": "^8.4.39",
     "tailwindcss": "^3.4.6",
+    "tsx": "^4.19.2",
     "typescript": "^5.5.3"
   }
 }

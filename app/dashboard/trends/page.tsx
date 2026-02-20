@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { TrendingUp, Eye, Send, Scissors } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabaseClient';
@@ -8,7 +9,7 @@ import { SkeletonCardGrid } from '@/components/ui/SkeletonCard';
 import EmptyState from '@/components/ui/EmptyState';
 import StatusChip from '@/components/ui/StatusChip';
 import DashboardPageHeader from '@/components/dashboard/DashboardPageHeader';
-import ClipItSafetyModal from '@/components/dashboard/ClipItSafetyModal';
+import { buildClipStudioHandoffUrl } from '@/lib/clipStudioHandoff';
 
 type TrendingVideo = {
   id: string;
@@ -57,11 +58,11 @@ const MOCK_TRENDING_VIDEOS: TrendingVideo[] = [
 ];
 
 export default function TrendsPage() {
+  const router = useRouter();
   const [niche, setNiche] = useState('content creation');
   const [loading, setLoading] = useState(true);
   const [videos, setVideos] = useState<TrendingVideo[]>([]);
   const [sendingId, setSendingId] = useState<string | null>(null);
-  const [clipVideo, setClipVideo] = useState<TrendingVideo | null>(null);
 
   async function handleSendToProduction(video: TrendingVideo) {
     setSendingId(video.id);
@@ -149,9 +150,14 @@ export default function TrendsPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setClipVideo(video)}
+                  onClick={() => router.push(buildClipStudioHandoffUrl({
+                    sourceUrl: `https://trends.octane.example/#${video.id}`,
+                    title: video.title || `Trend: ${video.id}`,
+                    platformTarget: 'tiktok',
+                    returnTo: '/dashboard/trends',
+                  }))}
                   className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-600 bg-slate-800/60 px-3 py-2 text-xs font-medium text-slate-300 hover:bg-slate-700 hover:text-slate-100 transition"
-                  title="Clip It — Safety check"
+                  title="Clip It — open in Clip Studio"
                 >
                   <Scissors className="h-3.5 w-3.5" />
                   Clip It
@@ -162,14 +168,6 @@ export default function TrendsPage() {
         </div>
       )}
 
-      <ClipItSafetyModal
-        open={!!clipVideo}
-        onClose={() => setClipVideo(null)}
-        sourceUrl={clipVideo ? `https://trends.octane.example/#${clipVideo.id}` : ''}
-        title={clipVideo?.title}
-        platformTarget="tiktok"
-        onSuccess={() => setClipVideo(null)}
-      />
     </div>
   );
 }

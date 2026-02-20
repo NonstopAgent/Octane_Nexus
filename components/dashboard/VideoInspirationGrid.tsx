@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Play, ExternalLink, Scissors } from 'lucide-react';
-import ClipItSafetyModal from './ClipItSafetyModal';
+import { buildClipStudioHandoffUrl } from '@/lib/clipStudioHandoff';
 
 export type VideoInspirationItem = {
   id: string;
@@ -13,10 +13,11 @@ export type VideoInspirationItem = {
 
 type VideoInspirationGridProps = {
   videos: VideoInspirationItem[];
+  returnTo?: string;
 };
 
-export default function VideoInspirationGrid({ videos }: VideoInspirationGridProps) {
-  const [clipVideo, setClipVideo] = useState<VideoInspirationItem | null>(null);
+export default function VideoInspirationGrid({ videos, returnTo = '/dashboard/library' }: VideoInspirationGridProps) {
+  const router = useRouter();
 
   if (videos.length === 0) {
     return (
@@ -78,7 +79,13 @@ export default function VideoInspirationGrid({ videos }: VideoInspirationGridPro
                     type="button"
                     onClick={(e) => {
                       e.preventDefault();
-                      setClipVideo(video);
+                      router.push(buildClipStudioHandoffUrl({
+                        sourceUrl: `https://www.youtube.com/watch?v=${video.id}`,
+                        title: video.title,
+                        channel: video.channelName,
+                        platformTarget: 'youtube',
+                        returnTo,
+                      }));
                     }}
                     className="inline-flex items-center gap-1 text-xs font-medium text-amber-400 hover:text-amber-300 transition"
                   >
@@ -91,16 +98,6 @@ export default function VideoInspirationGrid({ videos }: VideoInspirationGridPro
           );
         })}
       </div>
-
-      <ClipItSafetyModal
-        open={!!clipVideo}
-        onClose={() => setClipVideo(null)}
-        sourceUrl={clipVideo ? `https://www.youtube.com/watch?v=${clipVideo.id}` : ''}
-        title={clipVideo?.title}
-        channelName={clipVideo?.channelName}
-        platformTarget="youtube"
-        onSuccess={() => setClipVideo(null)}
-      />
     </>
   );
 }
