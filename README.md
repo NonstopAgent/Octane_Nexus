@@ -26,17 +26,15 @@ Creator daily loop MVP: discover ideas → production → post lab → clip stud
    SENTRY_DSN=your_sentry_dsn
    NEXT_PUBLIC_SENTRY_DSN=your_sentry_dsn
    SENTRY_AUTH_TOKEN=optional_for_ci_source_maps
+   SENTRY_TEST_TOKEN=optional_dev_only_token_to_allow_sentry_test_route
    ```
-   To verify Sentry: with `npm run dev` and `SENTRY_DSN` set, open `/api/sentry-test` (dev-only; returns 404 in production).
+   **Sentry test route:** In production `/api/sentry-test` always returns 404. In dev, to verify capture: set `SENTRY_TEST_TOKEN` to a secret value (e.g. a random string), then open `/api/sentry-test?token=<that_value>`. Without the query param or with a wrong token you get 404/400. Do not commit `SENTRY_TEST_TOKEN`.
 
 3. **Database**
-   - From the project root (no global Supabase install required):
-     ```bash
-     npm run db:push
-     ```
-   - Or with Supabase CLI: `npx supabase db push`.
+   - **Canonical (no global install):** From the project root run `npm run db:push` (uses `npx supabase db push`). Same for `npm run db:reset` and `npm run db:types`. All scripts use `npx supabase` so no global Supabase CLI is required.
    - Alternatively, paste the SQL from `supabase/migrations/*.sql` into the Supabase SQL editor **in filename order**.
-   - **DB health (MVP):** All migrations in `supabase/migrations/` are required for the MVP; apply them in order (oldest first). Local: `npm run db:reset` resets DB and reapplies migrations; `npm run db:types` regenerates `lib/database.types.ts` from the local schema.
+   - **DB health (MVP):** All migrations in `supabase/migrations/` are required for the MVP; apply them in order (oldest first).
+   - **Windows (PowerShell):** `db:types` uses shell redirect `> lib/database.types.ts`; ensure `lib` exists. If redirect fails, run `npx supabase gen types typescript --local` and save output to `lib/database.types.ts` manually.
 
 4. Open [http://localhost:3000](http://localhost:3000).
 
@@ -73,6 +71,8 @@ Creator daily loop MVP: discover ideas → production → post lab → clip stud
 - `npm run db:push` — apply migrations (no global Supabase; uses `npx supabase db push`)  
 - `npm run db:reset` — reset DB and reapply migrations  
 - `npm run db:types` — generate `lib/database.types.ts` from local schema  
+- `npm run test:e2e` — Playwright E2E (run after `npm run test:e2e:install` once)  
+- `npm run test:e2e:install` — install Playwright browsers (for CI or first-time local run)  
 
 **CI:** Use `npx supabase db push` (or `npm run db:push`) in CI when the project is linked; same env as local for Supabase.
 

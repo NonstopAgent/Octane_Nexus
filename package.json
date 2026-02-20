@@ -11,6 +11,7 @@
     "db:reset": "npx supabase db reset",
     "db:types": "npx supabase gen types typescript --local > lib/database.types.ts",
     "test:e2e": "playwright test",
+    "test:e2e:install": "playwright install --with-deps",
     "test:e2e:ui": "playwright test --ui",
     "test:explore": "playwright test tests/explorer.spec.ts"
   },
