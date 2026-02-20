@@ -64,6 +64,10 @@ Creator daily loop MVP: discover ideas → production → post lab → clip stud
 - **Required env vars** on Preview (and Production): `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`. Optional: `NEXT_PUBLIC_DEMO_MODE=true`, `SENTRY_DSN`, `SENTRY_AUTH_TOKEN` (for source maps in CI).
 - **Demo mode on Preview:** Same as local: set `NEXT_PUBLIC_DEMO_MODE=true` on the Preview environment. Use **Settings → Demo Data** → Seed Demo Data, then run through: Trends → Production → Post Lab → Clip Studio → Schedule → Monitoring. No static export; route handlers may be dynamic.
 
+## Local QA in one command
+
+Run **`npm run qa`** to run lint → build → Playwright smoke (`tests/smoke.spec.ts`). Install browsers once with `npm run test:e2e:install`. After a run, open **`playwright-report/index.html`** for the HTML report (traces/screenshots on failure).
+
 ## Scripts
 
 - `npm run dev` — development server  
@@ -73,6 +77,7 @@ Creator daily loop MVP: discover ideas → production → post lab → clip stud
 - `npm run db:push` — apply migrations (no global Supabase; uses `npx supabase db push`)  
 - `npm run db:reset` — reset DB and reapply migrations  
 - `npm run db:types` — generate `lib/database.types.ts` from local schema  
+- `npm run qa` — lint → build → Playwright smoke (full local QA)  
 - `npm run test:e2e` — Playwright E2E (run after `npm run test:e2e:install` once)  
 - `npm run test:e2e:install` — install Playwright browsers (for CI or first-time local run)  
 
