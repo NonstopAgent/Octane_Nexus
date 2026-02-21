@@ -43,3 +43,15 @@ If you enable the Notion sync workflow (see repo `.github/workflows/notion-sync.
 - **NOTION_DATABASE_ID** — ID of the backlog database (from the database URL: `notion.so/...?v=...` or from the page URL when opened as full page)
 
 The sync updates **PR Link** and **Status** from PR events (opened → In Progress, merged → Done, closed unmerged → Blocked). If secrets are missing or the PR is from a fork, the workflow skips cleanly and does not fail CI.
+
+## How to verify Notion sync works
+
+1. Open a PR targeting `main` and add a **Notion Task URL** in the description (e.g. in the PR template: **Notion Task URL:** `https://notion.so/your-workspace/...`).
+2. In your Notion backlog database, open the page that matches that URL.
+3. After the Notion sync workflow runs (on PR open/edit/sync/ready_for_review):
+   - **PR Link** should be set to the GitHub PR URL.
+   - **Status** should be **In Progress**.
+4. When the PR is merged, the same page’s **Status** should update to **Done** (sync runs on `pull_request` closed).
+5. If the PR is closed without merging, **Status** should become **Blocked**.
+
+No Vercel or other deployment env vars are required for Notion sync; only GitHub secrets **NOTION_TOKEN** and **NOTION_DATABASE_ID** are used by the workflow.
