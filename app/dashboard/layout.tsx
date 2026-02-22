@@ -76,12 +76,16 @@ export default function DashboardLayout({
     loadBrandVision();
   }, []);
 
-  // Load AI training level (mock reinforcement signal)
+  // Load AI accuracy level from Supabase (persisted across sessions)
   useEffect(() => {
-    // Only runs on client
-    if (typeof window !== 'undefined') {
-      setTrainingLevel(getCalibrationLevel());
+    async function loadAccuracy() {
+      const level = await getCalibrationLevel();
+      setTrainingLevel(level);
     }
+    loadAccuracy();
+    const handler = () => { loadAccuracy(); };
+    window.addEventListener('calibration-updated', handler);
+    return () => window.removeEventListener('calibration-updated', handler);
   }, []);
 
   const navItems = [

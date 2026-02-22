@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { Loader2, Users, Sparkles } from 'lucide-react';
+import { Loader2, Sparkles, MessageCircle } from 'lucide-react';
 
 export default function NexusPage() {
   const [creators, setCreators] = useState<any[]>([]);
@@ -67,10 +67,22 @@ export default function NexusPage() {
           <p className="ml-3 text-sm text-slate-300">Loading creators...</p>
         </div>
       ) : creators.length === 0 ? (
-        <div className="rounded-3xl border border-slate-800 bg-slate-900/80 p-12 text-center">
-          <Users className="mx-auto h-16 w-16 text-slate-600 mb-4" />
-          <p className="text-slate-300">No creators found yet.</p>
-          <p className="text-sm text-slate-400 mt-2">Be the first in your niche!</p>
+        <div className="flex flex-col items-center justify-center rounded-3xl border border-slate-800 bg-slate-900/80 p-12 text-center shadow-xl md:p-16">
+          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-500/15 text-amber-400">
+            <MessageCircle className="h-10 w-10" aria-hidden />
+          </div>
+          <h2 className="mt-6 text-xl font-semibold text-slate-50 md:text-2xl">
+            The community is just getting started
+          </h2>
+          <p className="mt-2 max-w-md text-sm text-slate-400">
+            Be one of the first to post and set the tone.
+          </p>
+          <button
+            type="button"
+            className="mt-8 inline-flex min-h-[48px] items-center justify-center gap-2 rounded-full border-2 border-amber-500 bg-amber-500 px-6 text-base font-semibold text-slate-950 shadow-lg transition-all hover:border-amber-400 hover:bg-amber-400 hover:shadow-xl hover:shadow-amber-500/60 hover:scale-[1.02]"
+          >
+            Start a Discussion
+          </button>
         </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">

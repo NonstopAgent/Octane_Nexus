@@ -1,8 +1,11 @@
 'use client';
 
 import { UserCircle, CreditCard } from 'lucide-react';
+import { useSession } from '@supabase/auth-helpers-react';
 
 export default function SettingsPage() {
+  const session = useSession();
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -26,7 +29,8 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Subscription Section */}
+      {/* Subscription / Billing: only show plan details when authenticated */}
+      {session && (
       <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6">
         <div className="flex items-center gap-3 mb-6">
           <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center">
@@ -40,6 +44,7 @@ export default function SettingsPage() {
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 }

@@ -48,7 +48,7 @@ export default function RealityCheck() {
 
     const item = items.find((i) => i.id === id);
     if (item) {
-      applyCalibrationFeedback(item.predictedScore, outcome);
+      await applyCalibrationFeedback(item.predictedScore, outcome);
     }
 
     // Mock calibration animation delay

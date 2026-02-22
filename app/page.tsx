@@ -1,12 +1,16 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Target, Sparkles, CheckCircle2, ArrowRight, Zap } from 'lucide-react';
+import { Target, Sparkles, CheckCircle2, ArrowRight, Zap, Quote } from 'lucide-react';
+
+const SCARCITY_TOTAL = 100;
+const SCARCITY_INITIAL_CLAIMED = 88; // Stable initial value to avoid "..." flicker before any async load
 
 export default function HomePage() {
   const searchParams = useSearchParams();
+  const [claimedCount, setClaimedCount] = useState<number>(SCARCITY_INITIAL_CLAIMED);
 
   // ==================== REFERRAL TRACKING ====================
   useEffect(() => {
@@ -44,7 +48,7 @@ export default function HomePage() {
             <span className="text-sm font-semibold uppercase tracking-wide text-amber-300">
               Limited Packages
             </span>
-            <span className="text-lg font-bold text-amber-500">88/100</span>
+            <span className="text-lg font-bold text-amber-500">{claimedCount}/{SCARCITY_TOTAL}</span>
             <span className="text-sm font-semibold text-amber-300">
               Identity Packages Claimed
             </span>
@@ -226,6 +230,93 @@ export default function HomePage() {
           </div>
         </div>
       </section>
+
+      {/* Testimonials */}
+      <section className="mx-auto w-full max-w-6xl space-y-8">
+        <div className="text-center">
+          <h2 className="text-2xl font-semibold text-slate-50 md:text-3xl">
+            What Creators Are Saying
+          </h2>
+          <p className="mt-2 text-sm text-slate-400 md:text-base">
+            Join creators who secured their identity and leveled up their content.
+          </p>
+        </div>
+        <div className="grid gap-6 md:grid-cols-3">
+          <div className="flex flex-col gap-4 rounded-3xl border border-slate-800 bg-slate-900/60 p-8 shadow-xl">
+            <Quote className="h-10 w-10 text-amber-500/40" aria-hidden />
+            <p className="text-sm text-slate-300 leading-relaxed">
+              I was paying for three different tools and still couldn&apos;t keep my handles consistent. 
+              Octane Nexus got my identity locked in one afternoon. The blueprints actually sound like me.
+            </p>
+            <div>
+              <p className="font-semibold text-slate-50">Jordan M.</p>
+              <p className="text-xs text-slate-400">Content Creator</p>
+            </div>
+          </div>
+          <div className="flex flex-col gap-4 rounded-3xl border border-slate-800 bg-slate-900/60 p-8 shadow-xl">
+            <Quote className="h-10 w-10 text-amber-500/40" aria-hidden />
+            <p className="text-sm text-slate-300 leading-relaxed">
+              The Authority Vault paid for itself in the first month. Having scripts ready for TikTok, 
+              IG, and X that match my voice changed how often I actually post. No more staring at a blank caption.
+            </p>
+            <div>
+              <p className="font-semibold text-slate-50">Samira K.</p>
+              <p className="text-xs text-slate-400">YouTube Strategist</p>
+            </div>
+          </div>
+          <div className="flex flex-col gap-4 rounded-3xl border border-slate-800 bg-slate-900/60 p-8 shadow-xl">
+            <Quote className="h-10 w-10 text-amber-500/40" aria-hidden />
+            <p className="text-sm text-slate-300 leading-relaxed">
+              One-time payment, no subscription creep. My handles are secured and the Librarian keeps me 
+              on track. Finally feel like I&apos;m running my creator business instead of the other way around.
+            </p>
+            <div>
+              <p className="font-semibold text-slate-50">Alex T.</p>
+              <p className="text-xs text-slate-400">Fitness Creator</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Final CTA */}
+      <section className="mx-auto w-full max-w-3xl space-y-6 text-center">
+        <h2 className="text-2xl font-semibold text-slate-50 md:text-3xl">
+          Ready to run your creator business like a pro?
+        </h2>
+        <p className="text-sm text-slate-400 md:text-base">
+          Secure your identity. Train your voice. Get your content pipeline built—one time.
+        </p>
+        <Link
+          href="/login?view=signup"
+          className="inline-flex min-h-[60px] items-center justify-center gap-2 rounded-full border-2 border-amber-500 bg-amber-500 px-8 text-base font-semibold text-slate-950 shadow-lg transition-all hover:border-amber-400 hover:bg-amber-400 hover:shadow-xl hover:shadow-amber-500/60 hover:scale-[1.02]"
+        >
+          Get Started
+          <ArrowRight className="h-5 w-5" />
+        </Link>
+      </section>
+
+      {/* Footer */}
+      <footer className="mx-auto w-full max-w-7xl border-t border-slate-800 px-4 pt-8 pb-8">
+        <div className="flex flex-col items-center justify-between gap-4 sm:flex-row sm:items-center">
+          <p className="text-sm text-slate-400">
+            © {new Date().getFullYear()} Octane Nexus. All rights reserved.
+          </p>
+          <nav className="flex items-center gap-6" aria-label="Footer">
+            <Link
+              href="#"
+              className="text-sm text-slate-400 transition hover:text-amber-400"
+            >
+              Privacy Policy
+            </Link>
+            <Link
+              href="#"
+              className="text-sm text-slate-400 transition hover:text-amber-400"
+            >
+              Terms of Service
+            </Link>
+          </nav>
+        </div>
+      </footer>
     </main>
   );
 }

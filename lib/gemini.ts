@@ -998,76 +998,95 @@ type CalibrationState = {
   feedbackCount: number; // how many times the user has calibrated
 };
 
-const CALIBRATION_STORAGE_KEY = 'octane_calibration_state';
+const DEFAULT_CALIBRATION: CalibrationState = { offset: 0, feedbackCount: 0 };
 
-function loadCalibrationState(): CalibrationState {
-  if (typeof window === 'undefined') {
-    return { offset: 0, feedbackCount: 0 };
-  }
+async function loadCalibrationState(): Promise<CalibrationState> {
+  if (typeof window === 'undefined') return DEFAULT_CALIBRATION;
   try {
-    const raw = window.localStorage.getItem(CALIBRATION_STORAGE_KEY);
-    if (!raw) return { offset: 0, feedbackCount: 0 };
-    const parsed = JSON.parse(raw) as CalibrationState;
-    if (typeof parsed.offset !== 'number' || typeof parsed.feedbackCount !== 'number') {
-      return { offset: 0, feedbackCount: 0 };
-    }
-    return parsed;
+    const { createClientComponentClient } = await import('@supabase/auth-helpers-nextjs');
+    const supabase = createClientComponentClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return DEFAULT_CALIBRATION;
+    const { data } = await supabase
+      .from('user_predictions')
+      .select('feedback_count, calibration_offset')
+      .eq('user_id', user.id)
+      .maybeSingle();
+    if (!data) return DEFAULT_CALIBRATION;
+    const feedbackCount = typeof data.feedback_count === 'number' ? data.feedback_count : 0;
+    const offset = typeof data.calibration_offset === 'number' ? data.calibration_offset : 0;
+    return { offset, feedbackCount };
   } catch {
-    return { offset: 0, feedbackCount: 0 };
+    return DEFAULT_CALIBRATION;
   }
 }
 
-function saveCalibrationState(state: CalibrationState) {
+async function saveCalibrationState(state: CalibrationState): Promise<void> {
   if (typeof window === 'undefined') return;
   try {
-    window.localStorage.setItem(CALIBRATION_STORAGE_KEY, JSON.stringify(state));
+    const { createClientComponentClient } = await import('@supabase/auth-helpers-nextjs');
+    const supabase = createClientComponentClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const level = Math.max(1, 1 + Math.floor(state.feedbackCount / 3));
+    await supabase
+      .from('user_predictions')
+      .upsert(
+        {
+          user_id: user.id,
+          accuracy_score: level,
+          feedback_count: state.feedbackCount,
+          calibration_offset: state.offset,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'user_id' }
+      );
   } catch {
     // ignore
   }
 }
 
-export function getCalibrationLevel(): number {
-  const state = loadCalibrationState();
-  // Simple mapping: each 3 feedback events increases level by 1
+export async function getCalibrationLevel(): Promise<number> {
+  const state = await loadCalibrationState();
   return Math.max(1, 1 + Math.floor(state.feedbackCount / 3));
 }
 
-export function applyCalibrationFeedback(predictedScore: number, outcome: CalibrationOutcome) {
-  const state = loadCalibrationState();
+export async function applyCalibrationFeedback(predictedScore: number, outcome: CalibrationOutcome): Promise<void> {
+  const state = await loadCalibrationState();
 
-  // Only adjust calibration when we were "confident" (high predicted score)
   const isHighScore = predictedScore >= 80;
   let { offset, feedbackCount } = state;
 
   if (isHighScore) {
     if (outcome === 'flop') {
-      // Become stricter: lower future scores by ~10%
       offset -= 0.1;
     } else if (outcome === 'viral') {
-      // Become slightly more confident / generous
       offset += 0.05;
     }
   }
 
-  // Clamp offset to a reasonable range [-0.4, +0.4]
   offset = Math.max(-0.4, Math.min(0.4, offset));
   feedbackCount += 1;
 
-  saveCalibrationState({ offset, feedbackCount });
+  await saveCalibrationState({ offset, feedbackCount });
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('calibration-updated'));
+  }
 }
 
-function buildConfidenceLabel(): string {
-  const { feedbackCount } = loadCalibrationState();
-  const level = getCalibrationLevel();
+async function buildConfidenceLabel(): Promise<string> {
+  const state = await loadCalibrationState();
+  const level = Math.max(1, 1 + Math.floor(state.feedbackCount / 3));
   const base = 70;
-  const bonus = Math.min(20, feedbackCount * 2); // up to +20 from feedback volume
+  const bonus = Math.min(20, state.feedbackCount * 2);
   const confidence = Math.max(50, Math.min(97, base + bonus + (level - 1) * 3));
   return `${confidence}% confident based on your recent feedback`;
 }
 
-function getMockIdeaAnalysis(idea: string, niche: string): IdeaAnalysis {
+async function getMockIdeaAnalysis(idea: string, niche: string): Promise<IdeaAnalysis> {
   const lowerIdea = idea.toLowerCase();
   const lowerNiche = niche.toLowerCase();
+  const confidenceLevel = await buildConfidenceLabel();
 
   if (lowerIdea.includes('how to') || lowerIdea.includes('tips') || lowerIdea.includes('secret')) {
     return {
@@ -1079,7 +1098,7 @@ function getMockIdeaAnalysis(idea: string, niche: string): IdeaAnalysis {
         'Add on-screen text with key takeaways',
         'Edit captions with a strong CTA'
       ],
-      confidenceLevel: buildConfidenceLabel(),
+      confidenceLevel,
     };
   } else if (lowerIdea.includes('behind the scenes') || lowerIdea.includes('journey') || lowerIdea.includes('story')) {
     return {
@@ -1091,7 +1110,7 @@ function getMockIdeaAnalysis(idea: string, niche: string): IdeaAnalysis {
         'Edit to maintain pacing and momentum',
         'Write captions that complement the story'
       ],
-      confidenceLevel: buildConfidenceLabel(),
+      confidenceLevel,
     };
   } else if (lowerIdea.includes('mistake') || lowerIdea.includes('wrong') || lowerIdea.includes('don\'t')) {
     return {
@@ -1103,7 +1122,7 @@ function getMockIdeaAnalysis(idea: string, niche: string): IdeaAnalysis {
         'Add visual proof to support your claims',
         'Edit captions that invite debate and engagement'
       ],
-      confidenceLevel: buildConfidenceLabel(),
+      confidenceLevel,
     };
   } else {
     return {
@@ -1115,7 +1134,7 @@ function getMockIdeaAnalysis(idea: string, niche: string): IdeaAnalysis {
         'Plan visuals that support each key point',
         'Write captions with a clear call-to-action'
       ],
-      confidenceLevel: buildConfidenceLabel(),
+      confidenceLevel,
     };
   }
 }
@@ -1176,7 +1195,7 @@ Do NOT return markdown, prose, or commentary. JSON only.`
     const parsed = JSON.parse(finalJson) as IdeaAnalysis;
 
     // Apply calibration offset to the score and rebuild confidence label
-    const { offset } = loadCalibrationState();
+    const { offset } = await loadCalibrationState();
     const adjustedScore = Math.max(
       0,
       Math.min(100, Math.round(parsed.viralScore * (1 + offset)))
@@ -1185,7 +1204,7 @@ Do NOT return markdown, prose, or commentary. JSON only.`
     return {
       ...parsed,
       viralScore: adjustedScore,
-      confidenceLevel: buildConfidenceLabel(),
+      confidenceLevel: await buildConfidenceLabel(),
     };
   } catch (parseError) {
     console.warn('⚠️ Parse error - returning mock idea analysis:', parseError);

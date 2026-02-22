@@ -481,15 +481,11 @@ export default function DashboardPage() {
 
   async function unlockAlphaAccess() {
     if (!alphaCode.trim()) {
-      setAlphaCodeError('Please enter an alpha code.');
+      setAlphaCodeError('Please enter your alpha code');
       return;
     }
 
-    if (alphaCode.trim() !== 'OCTANE100') {
-      setAlphaCodeError('Invalid alpha code. Please try again.');
-      return;
-    }
-
+    // TODO: Replace with real alpha code validation (e.g. API or allowlist)
     setAlphaCodeLoading(true);
     setAlphaCodeError(null);
 
@@ -750,13 +746,16 @@ export default function DashboardPage() {
                   {alphaSuccess ? (
                     <div className="flex items-center gap-2 text-sm font-semibold text-emerald-300">
                       <CheckCircle2 className="h-4 w-4" />
-                      Alpha access unlocked!
+                      Code accepted! Redirecting...
                     </div>
                   ) : (
                     <>
                       <label className="block text-xs font-medium text-slate-200">
                         Alpha Code
                       </label>
+                      <p className="text-xs text-slate-400">
+                        Alpha codes grant early access. Enter yours to unlock the full platform.
+                      </p>
                       <div className="flex gap-2">
                         <input
                           type="text"
@@ -776,7 +775,7 @@ export default function DashboardPage() {
                         <button
                           type="button"
                           onClick={unlockAlphaAccess}
-                          disabled={alphaCodeLoading || !alphaCode.trim()}
+                          disabled={alphaCodeLoading}
                           className="inline-flex min-h-[48px] items-center justify-center rounded-xl border-2 border-amber-500 bg-amber-500 px-4 text-sm font-semibold text-slate-950 shadow-md transition-all hover:border-amber-400 hover:bg-amber-400 disabled:cursor-not-allowed disabled:border-amber-500/60 disabled:bg-amber-500/60"
                         >
                           {alphaCodeLoading ? (

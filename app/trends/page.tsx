@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useMemo } from 'react';
-import { TrendingUp, Search, Filter, Hash, Sparkles } from 'lucide-react';
+import { useState, useMemo, useEffect } from 'react';
+import { TrendingUp, Search, Filter, Hash, Sparkles, Loader2, Send } from 'lucide-react';
 import { getTrendingHashtags, getTrendingByCategory, searchTrendingHashtags, type Platform, type TrendingHashtag } from '@/lib/trends';
 
 const PLATFORMS: { value: Platform | 'all'; label: string }[] = [
@@ -28,6 +28,41 @@ export default function TrendsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPlatform, setSelectedPlatform] = useState<Platform | 'all'>('all');
   const [selectedCategory, setSelectedCategory] = useState('All Categories');
+  const [sendingKey, setSendingKey] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  useEffect(() => {
+    if (feedback?.type === 'success') {
+      const t = setTimeout(() => setFeedback(null), 3000);
+      return () => clearTimeout(t);
+    }
+  }, [feedback?.type, feedback?.message]);
+
+  async function handleSendToProduction(hashtag: TrendingHashtag) {
+    const key = `${hashtag.platform}-${hashtag.tag}`;
+    setSendingKey(key);
+    setFeedback(null);
+    try {
+      const res = await fetch('/api/production/idea', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: `${hashtag.tag} (${hashtag.platform})`,
+          description: hashtag.description ?? undefined,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error((data as { error?: string }).error || res.statusText || 'Failed to send to production');
+      }
+      setFeedback({ type: 'success', message: 'Sent to production' });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Something went wrong. Please try again.';
+      setFeedback({ type: 'error', message });
+    } finally {
+      setSendingKey(null);
+    }
+  }
 
   const filteredHashtags = useMemo(() => {
     let filtered: TrendingHashtag[];
@@ -80,6 +115,20 @@ export default function TrendsPage() {
           and identify high-opportunity content angles.
         </p>
       </header>
+
+      {/* Inline feedback for Send to Production */}
+      {feedback && (
+        <div
+          role="alert"
+          className={`rounded-2xl border px-4 py-3 text-sm font-medium ${
+            feedback.type === 'success'
+              ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-300'
+              : 'border-rose-500/50 bg-rose-500/10 text-rose-300'
+          }`}
+        >
+          {feedback.message}
+        </div>
+      )}
 
       {/* Filters */}
       <section className="space-y-4 rounded-3xl border border-slate-800 bg-slate-900/80 p-6 shadow-xl">
@@ -194,6 +243,28 @@ export default function TrendsPage() {
                     style={{ width: `${hashtag.trend_score}%` }}
                   />
                 </div>
+              </div>
+
+              {/* Send to Production */}
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={() => handleSendToProduction(hashtag)}
+                  disabled={sendingKey !== null}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-xs font-semibold text-amber-300 transition hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {sendingKey === `${hashtag.platform}-${hashtag.tag}` ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Sending...
+                    </>
+                  ) : (
+                    <>
+                      <Send className="h-4 w-4" />
+                      Send to Production
+                    </>
+                  )}
+                </button>
               </div>
 
               {/* Rank Badge */}
