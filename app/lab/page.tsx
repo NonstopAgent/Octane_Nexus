@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { loadStripe } from '@stripe/stripe-js';
 import { Loader2, Zap, Lock, Sparkles, Target, ArrowRight } from 'lucide-react';
@@ -34,6 +34,14 @@ function extractVibeFromHistory(history: string): string {
 }
 
 export default function LabPage() {
+  return (
+    <Suspense fallback={<div className="flex min-h-screen items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-amber-500" /></div>}>
+      <LabContent />
+    </Suspense>
+  );
+}
+
+function LabContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [niche, setNiche] = useState('');
@@ -164,9 +172,9 @@ export default function LabPage() {
         userId: user?.id,
       });
       setIdeas(nextIdeas);
-    } catch (err: any) {
+    } catch (err: unknown) {
       setError(
-        err?.message ||
+        err instanceof Error ? err.message :
           "Couldn't generate ideas right now. Try again in a moment with a simple niche description."
       );
     } finally {
@@ -203,7 +211,6 @@ export default function LabPage() {
         // Still try to generate without user ID
       }
 
-      // Generate platform-specific blueprints from Gemini
       const result = await generatePlatformSpecificBlueprints({
         idea,
         userId: user?.id,
@@ -218,7 +225,7 @@ export default function LabPage() {
           .insert({
             user_id: user.id,
             idea,
-            blueprint: result, // Store all three platform blueprints
+            blueprint: result,
           });
 
         if (insertError) {
@@ -230,9 +237,9 @@ export default function LabPage() {
           }
         }
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       setBlueprintError(
-        err?.message ||
+        err instanceof Error ? err.message :
           'Could not generate platform-specific blueprints right now. Try again in a moment.'
       );
     } finally {
@@ -267,10 +274,10 @@ export default function LabPage() {
       if (redirectError) {
         throw redirectError;
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error initiating checkout:', err);
       setBlueprintError(
-        err?.message || 'Failed to start checkout. Please try again.'
+        err instanceof Error ? err.message : 'Failed to start checkout. Please try again.'
       );
       setCheckoutLoading(false);
     }
@@ -285,7 +292,6 @@ export default function LabPage() {
     );
   }
 
-  const hasVaultAccess = purchasedPackageType === 'vault';
   if (!hasPurchasedPackage) {
     return (
       <main className="mx-auto flex min-h-screen max-w-5xl flex-col gap-8 px-4 py-10 text-slate-50">
@@ -388,12 +394,12 @@ export default function LabPage() {
             <div className="flex flex-col items-center gap-3">
               {isLocalhost() && (
                 <button
-                  onClick={() => {
+                  onClick={async () => {
                     setBypassLoading(true);
+                    await new Promise((r) => setTimeout(r, 300));
                     setHasPurchasedPackage(true);
                     setPurchasedPackageType('vault');
                     setBypassLoading(false);
-                    console.log('Bypassed auth on localhost - package access granted');
                   }}
                   disabled={bypassLoading}
                   className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-xl border-2 border-emerald-500/50 bg-emerald-500/10 px-4 text-sm font-semibold text-emerald-400 transition-all hover:border-emerald-500 hover:bg-emerald-500/20 disabled:cursor-not-allowed"
@@ -659,7 +665,7 @@ export default function LabPage() {
                         Hook
                       </p>
                       <p className="mt-2 text-2xl font-semibold leading-snug text-slate-50 md:text-3xl">
-                        {platformBlueprints[selectedPlatform].hook}
+                        {platformBlueprints[selectedPlatform]?.hook ?? ''}
                       </p>
                     </div>
 
@@ -668,7 +674,7 @@ export default function LabPage() {
                         Middle beats
                       </p>
                       <ul className="mt-2 list-disc space-y-1 pl-5 text-base text-slate-100 md:text-lg">
-                        {platformBlueprints[selectedPlatform].meat.map((point, idx) => (
+                        {(platformBlueprints[selectedPlatform]?.meat ?? []).map((point, idx) => (
                           <li key={idx}>{point}</li>
                         ))}
                       </ul>
@@ -679,7 +685,7 @@ export default function LabPage() {
                         Call to action
                       </p>
                       <p className="mt-2 text-lg font-medium text-slate-50 md:text-xl">
-                        {platformBlueprints[selectedPlatform].cta}
+                        {platformBlueprints[selectedPlatform]?.cta ?? ''}
                       </p>
                     </div>
 
@@ -688,7 +694,7 @@ export default function LabPage() {
                         Setup tip
                       </p>
                       <p className="mt-2 text-sm text-slate-200 md:text-base">
-                        {platformBlueprints[selectedPlatform].setup_tip}
+                        {platformBlueprints[selectedPlatform]?.setup_tip ?? ''}
                       </p>
                     </div>
 

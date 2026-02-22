@@ -1,0 +1,15 @@
+---
+description: Octane Nexus house rules for Cursor — keep diffs tight and reviewable.
+globs: 
+alwaysApply: true
+---
+
+# House rules
+
+- **No refactors unless explicitly requested.** Do not refactor unrelated files.
+- **Max ~300 lines changed per task** (unless the task unavoidably requires more). Prefer small, scoped, reversible changes.
+- **Always show `git diff --stat` before asking to apply** so the reviewer sees scope.
+- **Commit after each completed deliverable** (one logical change per commit).
+- **Never leave conflict markers** (`<<<<<<<`, `=======`, `>>>>>>>`) in code.
+- **Prefer additive changes;** avoid sweeping renames or restructures.
+- Keep changes minimal and reviewable; support CI reliability, PR discipline, Sentry correctness, Supabase reliability, or Cursor guardrails.

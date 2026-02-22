@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { loadStripe } from '@stripe/stripe-js';
 import { BookOpen, Loader2, Sparkles, FileText, CheckCircle2, Zap, Lock, Search, Users, TrendingUp, ExternalLink, Trophy, Star } from 'lucide-react';
@@ -18,12 +18,12 @@ type SavedBlueprint = {
   blueprint: PlatformSpecificBlueprints | VideoBlueprint | null;
 };
 
-export default function LibraryPage() {
+function LibraryContent() {
   const [blueprints, setBlueprints] = useState<SavedBlueprint[]>([]);
   const [blueprintsLoading, setBlueprintsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [fullName, setFullName] = useState<string | null>(null);
-  const router = useRouter();
+  useRouter();
   const searchParams = useSearchParams();
   const [insight, setInsight] = useState<string | null>(null);
   const [insightLoading, setInsightLoading] = useState<boolean>(false);
@@ -124,7 +124,7 @@ export default function LibraryPage() {
           setError('Could not load your content library. Try again in a moment.');
         } else if (rows) {
           setBlueprints(
-            rows.map((row: any) => ({
+            rows.map((row: { id: string | number; idea: string; created_at: string | null; blueprint: PlatformSpecificBlueprints | VideoBlueprint | null }) => ({
               id: row.id,
               idea: row.idea,
               created_at: row.created_at ?? null,
@@ -134,11 +134,11 @@ export default function LibraryPage() {
         }
 
         setBlueprintsLoading(false);
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error('Unexpected error loading library data.', err);
         if (!isMounted) return;
         setError(
-          err?.message || 'Something went wrong loading your content library.'
+          err instanceof Error ? err.message : 'Something went wrong loading your content library.'
         );
         setBlueprintsLoading(false);
       }
@@ -174,10 +174,9 @@ export default function LibraryPage() {
         userName: fullName || undefined,
       });
       setInsight(result);
-    } catch (err: any) {
+    } catch (err: unknown) {
       setInsightError(
-        err?.message ||
-          'Could not generate insight right now. Try again in a moment.'
+        err instanceof Error ? err.message : 'Could not generate insight right now. Try again in a moment.'
       );
     } finally {
       setInsightLoading(false);
@@ -222,9 +221,9 @@ export default function LibraryPage() {
       setTimeout(() => {
         setMarkingViral(null);
       }, 1500);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error marking blueprint:', err);
-      alert(err.message || 'Failed to mark blueprint. Please try again.');
+      alert(err instanceof Error ? err.message : 'Failed to mark blueprint. Please try again.');
       setMarkingViral(null);
     }
   }
@@ -274,10 +273,9 @@ export default function LibraryPage() {
       setTimeout(() => {
         setBrandVoiceSuccess(false);
       }, 3000);
-    } catch (err: any) {
+    } catch (err: unknown) {
       setBrandVoiceError(
-        err?.message ||
-          'Could not save your brand voice. Please try again in a moment.'
+        err instanceof Error ? err.message : 'Could not save your brand voice. Please try again in a moment.'
       );
     } finally {
       setBrandVoiceLoading(false);
@@ -310,10 +308,10 @@ export default function LibraryPage() {
       if (redirectError) {
         throw redirectError;
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error initiating checkout:', err);
       setInsightError(
-        err?.message || 'Failed to start checkout. Please try again.'
+        err instanceof Error ? err.message : 'Failed to start checkout. Please try again.'
       );
       setCheckoutLoading(false);
     }
@@ -903,7 +901,7 @@ export default function LibraryPage() {
                         Hook
                       </p>
                       <p className="mt-2 text-2xl font-semibold leading-snug text-slate-50 md:text-3xl">
-                        {active.blueprint[selectedPlatform].hook}
+                        {active.blueprint[selectedPlatform]?.hook ?? ''}
                       </p>
                     </div>
 
@@ -912,7 +910,7 @@ export default function LibraryPage() {
                         Middle beats
                       </p>
                       <ul className="mt-2 list-disc space-y-1 pl-5 text-base text-slate-100 md:text-lg">
-                        {active.blueprint[selectedPlatform].meat.map(
+                        {(active.blueprint[selectedPlatform]?.meat ?? []).map(
                           (point, idx) => (
                             <li key={idx}>{point}</li>
                           )
@@ -925,7 +923,7 @@ export default function LibraryPage() {
                         Call to action
                       </p>
                       <p className="mt-2 text-lg font-medium text-slate-50 md:text-xl">
-                        {active.blueprint[selectedPlatform].cta}
+                        {active.blueprint[selectedPlatform]?.cta ?? ''}
                       </p>
                     </div>
 
@@ -934,7 +932,7 @@ export default function LibraryPage() {
                         Setup tip
                       </p>
                       <p className="mt-2 text-sm text-slate-200 md:text-base">
-                        {active.blueprint[selectedPlatform].setup_tip}
+                        {active.blueprint[selectedPlatform]?.setup_tip ?? ''}
                       </p>
                     </div>
                   </div>
@@ -985,5 +983,13 @@ export default function LibraryPage() {
         </div>
       )}
     </main>
+  );
+}
+
+export default function LibraryPage() {
+  return (
+    <Suspense fallback={<main className="flex min-h-screen items-center justify-center bg-slate-950"><div className="h-8 w-8 animate-spin rounded-full border-2 border-amber-500 border-t-transparent" /></main>}>
+      <LibraryContent />
+    </Suspense>
   );
 }

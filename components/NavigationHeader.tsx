@@ -8,11 +8,16 @@ import { supabase } from '@/lib/supabaseClient';
 import { getMockUser, isLocalhost, hasMockSession } from '@/lib/mockAuth';
 
 export function NavigationHeader() {
-  const router = useRouter();
+  useRouter();
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
 
   useEffect(() => {
     async function checkAuth() {
+      // Demo mode: cookie allows access without sign-in
+      if (typeof document !== 'undefined' && document.cookie.includes('octane_demo_mode=true')) {
+        setIsAuthenticated(true);
+        return;
+      }
       // Check for mock user first
       if (isLocalhost() && (hasMockSession() || getMockUser())) {
         setIsAuthenticated(true);

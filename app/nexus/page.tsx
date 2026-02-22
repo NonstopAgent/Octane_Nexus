@@ -4,8 +4,10 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { Loader2, Sparkles, MessageCircle } from 'lucide-react';
 
+type CreatorRow = { id: string; email?: string | null; niche?: string | null; linked_accounts?: Record<string, string | null> | null };
+
 export default function NexusPage() {
-  const [creators, setCreators] = useState<any[]>([]);
+  const [creators, setCreators] = useState<CreatorRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [userNiche, setUserNiche] = useState<string | null>(null);
 

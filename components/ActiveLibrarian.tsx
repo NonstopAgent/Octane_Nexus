@@ -24,7 +24,7 @@ export function ActiveLibrarian() {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [profile, setProfile] = useState<ProfileSnapshot | null>(null);
+  const [, setProfile] = useState<ProfileSnapshot | null>(null);
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
@@ -52,7 +52,7 @@ export function ActiveLibrarian() {
 
         const { data, error } = await supabase
           .from('profiles')
-          .select('full_name, niche, onboarding_step, streak_count, founder_license, has_purchased_package, purchased_package_type')
+          .select('full_name, niche, onboarding_step, streak_count, founder_license, has_purchased_package, purchased_package_type, linked_accounts')
           .eq('id', user.id)
           .maybeSingle();
 
@@ -92,7 +92,6 @@ export function ActiveLibrarian() {
         setProfile(snapshot);
 
         const name = snapshot.full_name || 'there';
-        const niche = snapshot.niche || undefined;
         const step = snapshot.onboarding_step;
         const streakCount =
           typeof data?.streak_count === 'number'

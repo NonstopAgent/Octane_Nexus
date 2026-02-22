@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Zap, TrendingUp, Loader2, Award } from 'lucide-react';
 import { analyzeIdea, getTrendingTopic } from '@/lib/gemini';
 
-type IdeaAnalysis = {
+type IdeaAnalysisDisplay = {
   score: number;
   grade: 'S' | 'A' | 'B' | 'C';
   feedback: string;
@@ -17,7 +17,7 @@ type IdeaLabProps = {
 
 export default function IdeaLab({ niche }: IdeaLabProps) {
   const [idea, setIdea] = useState<string>('');
-  const [analysis, setAnalysis] = useState<IdeaAnalysis | null>(null);
+  const [analysis, setAnalysis] = useState<IdeaAnalysisDisplay | null>(null);
   const [analyzing, setAnalyzing] = useState<boolean>(false);
   const [loadingTrend, setLoadingTrend] = useState<boolean>(false);
 
@@ -29,7 +29,13 @@ export default function IdeaLab({ niche }: IdeaLabProps) {
 
     try {
       const result = await analyzeIdea(idea, niche);
-      setAnalysis(result);
+      const grade = result.viralScore >= 90 ? 'S' : result.viralScore >= 80 ? 'A' : result.viralScore >= 70 ? 'B' : 'C';
+      setAnalysis({
+        score: result.viralScore,
+        grade,
+        feedback: result.prediction,
+        viral_tweak: result.tasks?.[0] ?? result.prediction,
+      });
     } catch (error) {
       console.error('Failed to analyze idea:', error);
     } finally {
