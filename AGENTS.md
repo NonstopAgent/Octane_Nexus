@@ -25,3 +25,37 @@ Octane Nexus is a creator terminal: Identity Sniper, Algorithm Lab, Active Libra
 - Lab (blueprints): `app/lab/page.tsx`
 - AI lib: `lib/gemini.ts`
 - Image gen: `lib/image-gen.ts`
+
+## Cursor Cloud specific instructions
+
+### Services overview
+
+| Service | How to run | Notes |
+|---|---|---|
+| Next.js dev server | `npm run dev` (port 3000) | Main app. Requires `.env.local` with Supabase credentials. |
+| Local Supabase | `npx supabase start` (requires Docker) | PostgreSQL + Auth + Storage on port 54321. |
+
+### Local Supabase setup (requires Docker)
+
+The migrations in `supabase/migrations/` assume the `profiles` table already exists, but no migration creates it. A `20250207000000_create_profiles.sql` migration was added to fix this. Additionally, `supabase start` applies all migrations on a fresh DB; migration `20250228000000_mvp_schema_alignment.sql` changes `content_posts.user_id` from UUID to TEXT but fails because RLS policies depend on that column. **Workaround**: start Supabase without migrations (`mv` them temporarily), then apply them manually via `docker exec supabase_db_workspace psql`, dropping the RLS policies on `content_posts` before applying the `mvp_schema_alignment` migration, and recreating them afterward with `auth.uid()::text = user_id`.
+
+After starting Supabase, export credentials with `npx supabase status -o env` and create `.env.local`:
+```
+NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321
+NEXT_PUBLIC_SUPABASE_ANON_KEY=<ANON_KEY from status>
+SUPABASE_SERVICE_ROLE_KEY=<SERVICE_ROLE_KEY from status>
+NEXT_PUBLIC_DEMO_MODE=true
+```
+
+### Known issues
+
+- **`npm run build` fails** due to pre-existing ESLint errors in `lib/gemini.ts` and `app/page.tsx` (unused vars, `any` types). Webpack compilation itself succeeds. `npm run dev` works fine.
+- **`npm run lint`** exits non-zero due to the same pre-existing errors. These are not blocking for development.
+- **Demo seed API** (`POST /api/demo/seed`) may fail with "invalid input syntax for type uuid" when multiple `user_id` columns haven't been converted from UUID to TEXT. Seed demo data directly using the Supabase service role client via Node.js instead.
+- **Dashboard routes** (`/dashboard/*`) are protected by middleware that checks for a real Supabase auth session. Mock login sets cookies but the middleware does not check them, so dashboard pages redirect to `/login`. The `/identity` and `/login` pages work in mock/demo mode.
+- **Missing npm packages**: `@supabase/ssr`, `sonner`, `pexels`, `fluent-ffmpeg`, `sharp` are imported by the codebase but not in `package.json`. They were added during setup.
+- **Missing module**: `lib/clipStudioHandoff.ts` was missing and was created during setup.
+
+### Lint / Test / Build commands
+
+See `README.md` for the full list. Key commands: `npm run dev`, `npm run lint`, `npm run build`, `npm run qa`.
