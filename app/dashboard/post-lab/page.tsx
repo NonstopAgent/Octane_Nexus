@@ -270,11 +270,13 @@ export default function PostLabPage() {
   }
 
   useEffect(() => {
+    if (!authResolved) return;
     if (!userId) {
       setLoading(false);
       return;
     }
 
+    setLoading(true);
     void (async () => {
       try {
         if (userId === DEMO_USER_ID) {
@@ -301,7 +303,7 @@ export default function PostLabPage() {
         setLoading(false);
       }
     })();
-  }, [userId]);
+  }, [userId, authResolved]);
 
   useEffect(() => {
     setVideoError(false);
