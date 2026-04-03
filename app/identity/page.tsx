@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { CheckCircle2, Loader2, Zap, ArrowRight, ArrowLeft, Sparkles } from 'lucide-react';
 import Link from 'next/link';
@@ -68,6 +68,7 @@ export default function IdentityPage() {
   const [, setHasPurchasedPackage] = useState<boolean>(false);
   const [checkingAccess, setCheckingAccess] = useState<boolean>(true);
   const [, setCheckoutLoading] = useState<boolean>(false);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
 
   // ==================== SHARED STATE (Across All Steps) ====================
   const [step, setStep] = useState<Step>(0);
@@ -97,6 +98,12 @@ export default function IdentityPage() {
   const [biosError, setBiosError] = useState<string | null>(null);
   const [editableVision, setEditableVision] = useState<string>('');
   const [isEditingVision, setIsEditingVision] = useState(false);
+  const [bioTuneOptions, setBioTuneOptions] = useState<Record<string, boolean>>({
+    funnier: false,
+    moreProfessional: false,
+    shorter: false,
+    moreNiche: false,
+  });
 
   // Step 5: Profile Pic Lab
   const [imageUrl, setImageUrl] = useState<string | null>(null);
@@ -114,9 +121,11 @@ export default function IdentityPage() {
       try {
         const { data: { user }, error: userError } = await supabase.auth.getUser();
         if (userError || !user) {
-          setCheckingAccess(false);
+          // No authenticated user — redirect to login
+          router.push('/login?view=signup&returnTo=/identity');
           return;
         }
+        setIsAuthenticated(true);
 
         const { data: profile } = await supabase
           .from('profiles')
@@ -145,7 +154,6 @@ export default function IdentityPage() {
         await supabase.from('profiles').upsert(
           {
             id: user.id,
-            email: user.email,
             has_purchased_package: true,
             founder_license: true,
           },
@@ -165,36 +173,17 @@ export default function IdentityPage() {
   // ==================== NAVIGATION HANDLERS ====================
   const currentStepName = steps[step];
 
-  const canGoNext = useMemo(() => {
-    if (step === 0) return !!primaryPlatform; // Step 0: Just need platform selected (auto-advances)
-    if (step === 1) return !!vision.trim(); // Step 1: Purpose - Need vision entered
-    if (step === 2) return hasAccount !== null; // Step 2: Setup Guide - Need to answer if they have account
-    if (step === 3) return !!handleResults && !!selectedHandle.trim(); // Step 3: Handle Sniper
-    if (currentStepName === 'Bio Architect') {
-      return !!visionBios && !!selectedBioType && !!vision.trim(); // Bio steps - need bios generated
-    }
-    if (currentStepName === 'Channel Description') {
-      // YouTube channel description - check if we have a selected description (using vision as placeholder)
-      return !!vision.trim(); // For now, just check vision exists (will be updated when selection is saved)
-    }
-    if (currentStepName === 'Pro Bio') {
-      // X Pro Bio - check if we have a selected description (using vision as placeholder)
-      return !!vision.trim(); // For now, just check vision exists (will be updated when selection is saved)
-    }
-    return true; // Channel Banner, Header Image, Brand Identity - Always enabled
-  }, [step, primaryPlatform, vision, hasAccount, handleResults, selectedHandle, visionBios, selectedBioType, currentStepName]);
-
   async function handleNext() {
-    if (step >= steps.length - 1 || !canGoNext) return;
-    
+    if (step >= steps.length - 1) return;
+
     // Save vision globally when moving from Purpose step
     if (step === 1 && vision.trim()) {
       await updateProfileProgress({ brand_vision: vision.trim() });
     }
-    
+
     setStep((prev) => (prev + 1) as Step);
     await updateProfileProgress();
-    
+
     // Auto-generate bios when entering Bio Architect or Pro Bio steps
     const nextStepName = steps[step + 1];
     if (step === 3 && (nextStepName === 'Bio Architect' || nextStepName === 'Pro Bio') && vision.trim() && !visionBios) {
@@ -414,6 +403,9 @@ export default function IdentityPage() {
       if (niche) updateData.niche = niche;
       if (vibe) updateData.vibe = vibe;
       if (vision) updateData.brand_vision = vision;
+      if (bioTuneOptions && Object.keys(bioTuneOptions).length > 0) {
+        updateData.bio_tune_options = bioTuneOptions;
+      }
 
       await supabase.from('profiles').upsert(updateData);
     } catch (err) {
@@ -629,6 +621,8 @@ export default function IdentityPage() {
             selectedBioType={selectedBioType}
             onSelectBio={setSelectedBioType}
             onRegenerate={handleGenerateVisionBios}
+            bioTuneOptions={bioTuneOptions}
+            onTuneChange={(key, value) => setBioTuneOptions((prev) => ({ ...prev, [key]: value }))}
           />
         )}
         {currentStepName === 'Channel Description' && (
@@ -700,7 +694,7 @@ export default function IdentityPage() {
             <button
               type="button"
               onClick={handleNext}
-              disabled={!canGoNext}
+              disabled={step >= steps.length - 1}
             className="inline-flex min-h-[48px] items-center justify-center rounded-full bg-amber-500 px-8 text-sm font-semibold text-slate-950 shadow-md hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-50"
             >
             {step >= steps.length - 1 && isEditMode && currentStepName === 'Brand Identity'
@@ -1725,26 +1719,30 @@ function BioArchitect(props: {
   selectedBioType: 'authority' | 'relatability' | 'mystery' | null;
   onSelectBio: (type: 'authority' | 'relatability' | 'mystery') => void;
   onRegenerate: (refinement?: string) => void;
+  bioTuneOptions: Record<string, boolean>;
+  onTuneChange: (key: string, value: boolean) => void;
 }) {
   const {
-    vision, 
-    editableVision, 
-    setEditableVision, 
-    isEditingVision, 
+    vision,
+    editableVision,
+    setEditableVision,
+    isEditingVision,
     setIsEditingVision,
-    visionBios, 
+    visionBios,
     loading,
     error,
-    selectedBioType, 
+    selectedBioType,
     onSelectBio,
-    onRegenerate
+    onRegenerate,
+    bioTuneOptions,
+    onTuneChange,
   } = props;
 
   const refinementChips = [
-    { label: '😂 Funnier', refinement: 'Make it funnier and more entertaining' },
-    { label: '💼 More Professional', refinement: 'Make it more professional and formal' },
-    { label: '⚡ Shorter', refinement: 'Make it shorter and more concise' },
-    { label: '🎯 More Niche', refinement: 'Make it more niche-specific and targeted' },
+    { key: 'funnier', label: '😂 Funnier', refinement: 'Make it funnier and more entertaining' },
+    { key: 'moreProfessional', label: '💼 More Professional', refinement: 'Make it more professional and formal' },
+    { key: 'shorter', label: '⚡ Shorter', refinement: 'Make it shorter and more concise' },
+    { key: 'moreNiche', label: '🎯 More Niche', refinement: 'Make it more niche-specific and targeted' },
   ];
 
   // Sanitize bio line: remove HTML entities
@@ -1911,20 +1909,27 @@ function BioArchitect(props: {
             </button>
           </div>
 
-          {/* Refinement Chips */}
+          {/* Tune the tone: toggles with state (saved with profile) */}
           <div className="flex flex-wrap items-center gap-3 pt-4 border-t border-slate-800">
             <p className="text-xs font-medium text-slate-400">Tune the tone:</p>
-            {refinementChips.map((chip) => (
-              <button
-                key={chip.label}
-                type="button"
-                onClick={() => onRegenerate(chip.refinement)}
-                className="inline-flex min-h-[36px] items-center justify-center gap-2 rounded-full border border-slate-700 bg-slate-950 px-4 text-xs font-medium text-slate-300 hover:border-amber-400 hover:bg-amber-500/10 hover:text-amber-300 transition"
-              >
-                {chip.label}
-            </button>
-          ))}
-        </div>
+            {refinementChips.map((chip) => {
+              const isOn = !!bioTuneOptions[chip.key];
+              return (
+                <button
+                  key={chip.key}
+                  type="button"
+                  onClick={() => onTuneChange(chip.key, !isOn)}
+                  className={`inline-flex min-h-[36px] items-center justify-center gap-2 rounded-full border px-4 text-xs font-medium transition ${
+                    isOn
+                      ? 'border-amber-500 bg-amber-500/20 text-amber-300'
+                      : 'border-slate-700 bg-slate-950 text-slate-300 hover:border-amber-400 hover:bg-amber-500/10 hover:text-amber-300'
+                  }`}
+                >
+                  {chip.label}
+                </button>
+              );
+            })}
+          </div>
         </>
       )}
 

@@ -49,7 +49,6 @@ function LoginContent() {
         await supabase.from('profiles').upsert(
           {
             id: authData.user.id,
-            email: authData.user.email,
             has_purchased_package: true,
             founder_license: true,
           },

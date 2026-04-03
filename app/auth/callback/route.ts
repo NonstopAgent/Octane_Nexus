@@ -1,25 +1,39 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://zdvedfnpipgygvikoooa.supabase.co';
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_1EEA1MtGEqz8vWJAApQM6Q_FnjK-aaw';
+import { createServerClient } from '@supabase/ssr';
+import { cookies } from 'next/headers';
 
 export async function GET(req: NextRequest) {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!supabaseUrl || !supabaseKey) {
+    return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
+  }
+
   const requestUrl = new URL(req.url);
   const code = requestUrl.searchParams.get('code');
   const returnTo = requestUrl.searchParams.get('returnTo') || '/identity';
 
   if (code) {
-    // Create a server-side Supabase client for the callback
-    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-      auth: {
-        persistSession: false,
-      },
-    });
-
     try {
-      // Exchange the code for a session
-      const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+      const cookieStore = cookies();
+      const supabase = createServerClient(supabaseUrl, supabaseKey, {
+        cookies: {
+          getAll() {
+            return cookieStore.getAll();
+          },
+          setAll(cookiesToSet) {
+            try {
+              cookiesToSet.forEach(({ name, value, options }) =>
+                cookieStore.set(name, value, { ...options })
+              );
+            } catch {
+              // Ignored — middleware will handle session refresh
+            }
+          },
+        },
+      });
+
+      const { error } = await supabase.auth.exchangeCodeForSession(code);
 
       if (error) {
         console.error('Error exchanging code for session:', error);
@@ -28,28 +42,8 @@ export async function GET(req: NextRequest) {
         );
       }
 
-      if (data.user) {
-        // Ensure profile exists
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .upsert(
-            {
-              id: data.user.id,
-              email: data.user.email,
-            },
-            {
-              onConflict: 'id',
-            }
-          );
-
-        if (profileError) {
-          console.error('Error creating/updating profile:', profileError);
-          // Continue anyway, profile might already exist
-        }
-
-        // Redirect to the returnTo URL or dashboard
-        return NextResponse.redirect(new URL(returnTo, requestUrl.origin));
-      }
+      // Session is now stored in cookies — redirect to destination
+      return NextResponse.redirect(new URL(returnTo, requestUrl.origin));
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Authentication failed';
       console.error('Error in auth callback:', err);
