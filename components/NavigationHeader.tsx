@@ -30,6 +30,13 @@ export function NavigationHeader() {
     }
 
     checkAuth();
+
+    // Listen for auth state changes so the header updates reactively
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsAuthenticated(!!session);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
 

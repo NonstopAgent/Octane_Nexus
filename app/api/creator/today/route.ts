@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
-import { createClient } from '@supabase/supabase-js';
+import { createSupabaseServerClient } from '@/lib/supabaseServer';
 import { getEffectiveUserId } from '@/lib/effectiveUser';
 import { POST_STATUS } from '@/lib/constants';
 
@@ -26,12 +26,10 @@ export type CreatorTodayPayload = {
   topActions?: { label: string; href: string; cta: string }[];
 };
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://zdvedfnpipgygvikoooa.supabase.co';
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_1EEA1MtGEqz8vWJAApQM6Q_FnjK-aaw';
-
 export async function GET(req: NextRequest) {
+  const supabase = createSupabaseServerClient();
+
   try {
-    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     const { data: { user } } = await supabase.auth.getUser();
     // Demo mode: allow unauthenticated when x-demo-mode header or cookie present
     const demoHeader = req.headers.get('x-demo-mode') === 'true';
