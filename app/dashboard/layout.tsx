@@ -81,7 +81,6 @@ export default function DashboardLayout({
   }, []);
 
   const navItems = [
-    { href: '/dashboard/creator', label: 'Creator Loop', icon: Zap, external: false },
     { href: '/identity', label: 'Identity', icon: UserCircle, external: false },
     { href: '/dashboard/library', label: 'Library', icon: BookOpen, external: false },
     { href: '/dashboard/trends', label: 'Trends', icon: TrendingUp, external: false },
@@ -89,8 +88,6 @@ export default function DashboardLayout({
     { href: '/dashboard/post-lab', label: 'Post Lab', icon: Sparkles, external: false },
     { href: '/dashboard/production', label: 'Production', icon: LayoutGrid, external: false },
     { href: '/dashboard/schedule', label: 'Schedule', icon: CalendarDays, external: false },
-    { href: '/dashboard/clip-studio', label: 'Clip Studio', icon: Scissors, external: false },
-    { href: '/dashboard/monitoring', label: 'Monitoring', icon: BarChart3, external: false },
     { href: '/dashboard/settings', label: 'Settings', icon: Settings, external: false },
   ];
 

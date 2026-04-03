@@ -28,6 +28,11 @@ export function ActiveLibrarian() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
+  // Disable the Active Librarian on the identity page where it blocks the onboarding UI
+  if (pathname === '/identity' || pathname?.startsWith('/identity')) {
+    return null;
+  }
+
   useEffect(() => {
     let isMounted = true;
 
