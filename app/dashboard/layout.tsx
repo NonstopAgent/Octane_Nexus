@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { UserCircle, BookOpen, BarChart3, Settings, MessageCircle, Sparkles, CalendarDays, LayoutGrid, TrendingUp, Scissors, Zap } from 'lucide-react';
+import { UserCircle, BookOpen, Settings, MessageCircle, Sparkles, CalendarDays, LayoutGrid, TrendingUp } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { getCalibrationLevel } from '@/lib/gemini';
 import CreatorDailyBar from '@/components/dashboard/CreatorDailyBar';

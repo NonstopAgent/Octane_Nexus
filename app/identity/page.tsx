@@ -68,7 +68,7 @@ export default function IdentityPage() {
   const [, setHasPurchasedPackage] = useState<boolean>(false);
   const [checkingAccess, setCheckingAccess] = useState<boolean>(true);
   const [, setCheckoutLoading] = useState<boolean>(false);
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [, setIsAuthenticated] = useState<boolean>(false);
 
   // ==================== SHARED STATE (Across All Steps) ====================
   const [step, setStep] = useState<Step>(0);

@@ -29,9 +29,7 @@ export function ActiveLibrarian() {
   const searchParams = useSearchParams();
 
   // Disable the Active Librarian on the identity page where it blocks the onboarding UI
-  if (pathname === '/identity' || pathname?.startsWith('/identity')) {
-    return null;
-  }
+  const isIdentityPage = pathname === '/identity' || pathname?.startsWith('/identity');
 
   useEffect(() => {
     let isMounted = true;
@@ -254,6 +252,8 @@ export function ActiveLibrarian() {
 
     // TODO: Save messages and user progress to Supabase.
   }
+
+  if (isIdentityPage) return null;
 
   return (
     <>
