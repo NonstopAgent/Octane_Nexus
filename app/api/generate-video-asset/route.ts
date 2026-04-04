@@ -13,15 +13,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'postId is required' }, { status: 400 });
     }
 
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (!supabaseUrl || !supabaseKey) {
+      return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
+    }
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
     const openaiKey = process.env.OPENAI_API_KEY;
     const pexelsKey = process.env.PEXELS_API_KEY;
 
     if (!openaiKey) return NextResponse.json({ error: 'OPENAI_API_KEY not set' }, { status: 500 });
     if (!pexelsKey) return NextResponse.json({ error: 'PEXELS_API_KEY not set' }, { status: 500 });
-
-    const supabase = createClient(supabaseUrl, supabaseKey);
 
     // 1. Fetch post
     const { data: post, error: postErr } = await supabase

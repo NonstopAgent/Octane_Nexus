@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Send, Bot, User, Loader2, Paperclip } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
@@ -16,7 +16,7 @@ type Message = {
   scorecard?: IdeaAnalysis;
 };
 
-export default function ChatPage() {
+function ChatPageContent() {
   const [messageList, setMessageList] = useState<Message[]>([
     {
       id: 'welcome',
@@ -382,5 +382,13 @@ export default function ChatPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function ChatPage() {
+  return (
+    <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-slate-950"><div className="h-8 w-8 animate-spin rounded-full border-2 border-amber-500 border-t-transparent" /></div>}>
+      <ChatPageContent />
+    </Suspense>
   );
 }

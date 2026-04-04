@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { Suspense } from 'react';
 import './globals.css';
 import { ActiveLibrarian } from '@/components/ActiveLibrarian';
 import { NavigationHeader } from '@/components/NavigationHeader';
@@ -19,7 +20,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             <NavigationHeader />
             <SystemStatusBanner />
             {children}
-            <ActiveLibrarian />
+            <Suspense fallback={null}>
+              <ActiveLibrarian />
+            </Suspense>
           </div>
         </SupabaseSessionProvider>
       </body>

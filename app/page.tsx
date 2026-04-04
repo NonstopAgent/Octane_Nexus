@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Target, Sparkles, CheckCircle2, ArrowRight, Zap, Quote } from 'lucide-react';
@@ -8,9 +8,9 @@ import { Target, Sparkles, CheckCircle2, ArrowRight, Zap, Quote } from 'lucide-r
 const SCARCITY_TOTAL = 100;
 const SCARCITY_INITIAL_CLAIMED = 88; // Stable initial value to avoid "..." flicker before any async load
 
-export default function HomePage() {
+function HomePageContent() {
   const searchParams = useSearchParams();
-  const [claimedCount, setClaimedCount] = useState<number>(SCARCITY_INITIAL_CLAIMED);
+  const [claimedCount] = useState<number>(SCARCITY_INITIAL_CLAIMED);
 
   // ==================== REFERRAL TRACKING ====================
   useEffect(() => {
@@ -318,5 +318,13 @@ export default function HomePage() {
         </div>
       </footer>
     </main>
+  );
+}
+
+export default function HomePage() {
+  return (
+    <Suspense fallback={<main className="flex min-h-screen items-center justify-center bg-slate-950"><div className="h-8 w-8 animate-spin rounded-full border-2 border-amber-500 border-t-transparent" /></main>}>
+      <HomePageContent />
+    </Suspense>
   );
 }

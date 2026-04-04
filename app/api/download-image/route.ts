@@ -1,15 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-
 export async function GET(req: NextRequest) {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!supabaseUrl) {
+    return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
+  }
+
   const url = req.nextUrl.searchParams.get('url');
   if (!url) {
     return NextResponse.json({ error: 'url is required' }, { status: 400 });
   }
 
   // Only allow our Supabase storage URLs
-  if (!SUPABASE_URL || !url.startsWith(SUPABASE_URL)) {
+  if (!url.startsWith(supabaseUrl)) {
     return NextResponse.json({ error: 'Invalid image URL' }, { status: 403 });
   }
 

@@ -1,7 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { cookies } from 'next/headers';
 import { generateVideoScript } from '@/lib/gemini';
 
 export async function POST(req: NextRequest) {
+  const supabase = createRouteHandlerClient({ cookies });
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) {
+    return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+  }
+
   try {
     const body = await req.json();
     const { topic, userId } = body as { topic: string; userId?: string };
