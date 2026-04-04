@@ -8,7 +8,7 @@ import { SupabaseSessionProvider } from '@/components/SupabaseSessionProvider';
 
 export const metadata = {
   title: 'Octane Nexus',
-  description: 'A calm engine for social growth.',
+  description: 'One place to discover trends, create content with AI, and manage your posting pipeline. Built for creators.',
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
