@@ -1,320 +1,145 @@
 'use client';
 
-import { useEffect, useState, Suspense } from 'react';
+import { Suspense } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
-import { Target, Sparkles, CheckCircle2, ArrowRight, Zap, Quote } from 'lucide-react';
-
-const SCARCITY_TOTAL = 100;
-const SCARCITY_INITIAL_CLAIMED = 88; // Stable initial value to avoid "..." flicker before any async load
+import { Sparkles, ArrowRight, TrendingUp, MessageCircle, LayoutGrid, CalendarDays, Zap, UserCircle } from 'lucide-react';
 
 function HomePageContent() {
-  const searchParams = useSearchParams();
-  const [claimedCount] = useState<number>(SCARCITY_INITIAL_CLAIMED);
-
-  // ==================== REFERRAL TRACKING ====================
-  useEffect(() => {
-    const referralId = searchParams?.get('ref');
-    if (referralId) {
-      // Save referral source to cookie (expires in 30 days)
-      const expiryDate = new Date();
-      expiryDate.setTime(expiryDate.getTime() + (30 * 24 * 60 * 60 * 1000));
-      document.cookie = `referral_source=${referralId}; path=/; expires=${expiryDate.toUTCString()}`;
-      console.log('Referral tracked:', referralId);
-    }
-  }, [searchParams]);
-
   return (
-    <main className="mx-auto flex min-h-screen max-w-7xl flex-col gap-16 px-4 py-16 md:py-24">
+    <main className="mx-auto flex min-h-screen max-w-7xl flex-col gap-20 px-4 py-16 md:py-24">
       {/* Hero Section */}
-      <section className="mx-auto max-w-4xl space-y-6 text-center">
+      <section className="mx-auto max-w-4xl space-y-8 text-center">
         <div className="inline-flex rounded-full border border-amber-500/40 bg-amber-500/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-amber-300">
-          High-Performance Creator Terminal
+          Your Daily Creator Hub
         </div>
-        <h1 className="text-4xl font-semibold leading-tight text-slate-50 md:text-6xl lg:text-7xl">
-          Build Your High-Authority{' '}
-          <span className="text-amber-500">Creator Identity</span> in 5 Minutes.
+        <h1 className="text-4xl font-semibold leading-tight text-slate-50 md:text-6xl">
+          Stop Hopping Between{' '}
+          <span className="text-amber-500">10 Different Tools.</span>
         </h1>
-        <p className="mx-auto max-w-2xl text-base text-slate-300 md:text-lg">
-          Stop paying for tools. Invest in results. Get your cross-platform identity secured, 
-          your voice trained, and your content pipeline built—one time.
+        <p className="mx-auto max-w-2xl text-base text-slate-300 md:text-lg leading-relaxed">
+          Octane Nexus is one place to discover what&apos;s trending, generate scripts with AI, 
+          manage your content pipeline, and schedule posts. Built for creators who are tired of 
+          tab-switching their way through every upload.
         </p>
+        <div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
+          <Link
+            href="/login?view=signup"
+            className="inline-flex min-h-[56px] items-center justify-center gap-2 rounded-full border-2 border-amber-500 bg-amber-500 px-8 text-base font-semibold text-slate-950 shadow-lg transition-all hover:border-amber-400 hover:bg-amber-400 hover:shadow-xl hover:shadow-amber-500/60 hover:scale-[1.02]"
+          >
+            Start Free
+            <ArrowRight className="h-5 w-5" />
+          </Link>
+          <Link
+            href="/login"
+            className="inline-flex min-h-[56px] items-center justify-center gap-2 rounded-full border border-slate-700 bg-slate-900 px-8 text-base font-semibold text-slate-200 transition-all hover:border-amber-500/50 hover:bg-slate-800 hover:text-amber-400"
+          >
+            Sign In
+          </Link>
+        </div>
+        <p className="text-xs text-slate-500">No credit card required. Free to explore.</p>
       </section>
 
-      {/* Pricing Section */}
-      <section className="mx-auto w-full max-w-5xl space-y-8">
-        <div className="text-center">
-          <div className="mb-4 inline-flex items-center gap-2 rounded-full border-2 border-amber-500/40 bg-amber-500/10 px-4 py-2">
-            <span className="text-sm font-semibold uppercase tracking-wide text-amber-300">
-              Limited Packages
-            </span>
-            <span className="text-lg font-bold text-amber-500">{claimedCount}/{SCARCITY_TOTAL}</span>
-            <span className="text-sm font-semibold text-amber-300">
-              Identity Packages Claimed
-            </span>
-          </div>
+      {/* How It Works */}
+      <section className="mx-auto w-full max-w-5xl space-y-10">
+        <div className="text-center space-y-3">
           <h2 className="text-2xl font-semibold text-slate-50 md:text-3xl">
-            One-Time Investment. Lifetime Foundation.
+            Your Daily Creator Loop
           </h2>
-          <p className="mt-2 text-sm text-slate-400 md:text-base">
-            Choose your package. Secure your identity. Build your authority.
-          </p>
-        </div>
-
-        <div className="grid gap-6 md:grid-cols-2">
-          {/* Identity Sniper Package */}
-          <div className="relative flex flex-col gap-6 rounded-3xl border-2 border-slate-800 bg-slate-900/80 p-8 shadow-xl transition-all hover:border-amber-500/50 hover:shadow-2xl">
-            <div className="space-y-4">
-              <div className="flex items-start justify-between">
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-500/20 text-amber-400">
-                  <Target className="h-7 w-7" />
-                </div>
-                <div className="text-right">
-                  <div className="text-3xl font-bold text-slate-50">$149</div>
-                  <div className="text-xs text-slate-400">One-Time</div>
-                </div>
-              </div>
-              <div className="space-y-3">
-                <h3 className="text-2xl font-semibold text-slate-50">
-                  The Identity Sniper
-                </h3>
-                <p className="text-sm text-slate-300">
-                  Secure your handles and craft your professional presence across all platforms.
-                </p>
-              </div>
-              <ul className="space-y-3 text-sm text-slate-300">
-                <li className="flex items-start gap-3">
-                  <CheckCircle2 className="mt-0.5 h-5 w-5 flex-shrink-0 text-emerald-400" />
-                  <span>Cross-platform handle securing (IG, TikTok, X)</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <CheckCircle2 className="mt-0.5 h-5 w-5 flex-shrink-0 text-emerald-400" />
-                  <span>3 professional bios tailored to your niche</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <CheckCircle2 className="mt-0.5 h-5 w-5 flex-shrink-0 text-emerald-400" />
-                  <span>Custom niche analysis & positioning strategy</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <CheckCircle2 className="mt-0.5 h-5 w-5 flex-shrink-0 text-emerald-400" />
-                  <span>Brand Voice Training module access</span>
-                </li>
-              </ul>
-            </div>
-            <Link
-              href="/login?view=signup"
-              className="mt-auto inline-flex min-h-[60px] w-full items-center justify-center gap-2 rounded-full border-2 border-amber-500 bg-amber-500 px-8 text-base font-semibold text-slate-950 shadow-lg transition-all hover:border-amber-400 hover:bg-amber-400 hover:shadow-xl hover:shadow-amber-500/60 hover:scale-[1.02]"
-            >
-              Get Started
-              <ArrowRight className="h-5 w-5" />
-            </Link>
-          </div>
-
-          {/* Authority Vault Package */}
-          <div className="relative flex flex-col gap-6 rounded-3xl border-2 border-amber-500 bg-amber-500/10 p-8 shadow-xl transition-all hover:border-amber-400 hover:bg-amber-500/15">
-            <div className="absolute -top-4 left-1/2 -translate-x-1/2 rounded-full border-2 border-amber-500 bg-slate-950 px-4 py-1 text-xs font-semibold uppercase tracking-wide text-amber-400">
-              Most Popular
-            </div>
-            <div className="space-y-4">
-              <div className="flex items-start justify-between">
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-500 text-slate-950">
-                  <Sparkles className="h-7 w-7" />
-                </div>
-                <div className="text-right">
-                  <div className="text-3xl font-bold text-slate-50">$299</div>
-                  <div className="text-xs text-slate-400">One-Time</div>
-                </div>
-              </div>
-              <div className="space-y-3">
-                <h3 className="text-2xl font-semibold text-slate-50">
-                  The Authority Vault
-                </h3>
-                <p className="text-sm text-slate-300">
-                  Everything in the Sniper package, plus 30 days of custom, voice-matched content blueprints.
-                </p>
-              </div>
-              <ul className="space-y-3 text-sm text-slate-300">
-                <li className="flex items-start gap-3">
-                  <CheckCircle2 className="mt-0.5 h-5 w-5 flex-shrink-0 text-emerald-400" />
-                  <span className="font-semibold">Everything in Identity Sniper</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <CheckCircle2 className="mt-0.5 h-5 w-5 flex-shrink-0 text-emerald-400" />
-                  <span>30 days of custom platform blueprints (90 total scripts)</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <CheckCircle2 className="mt-0.5 h-5 w-5 flex-shrink-0 text-emerald-400" />
-                  <span>Voice-matched content trained on your best posts</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <CheckCircle2 className="mt-0.5 h-5 w-5 flex-shrink-0 text-emerald-400" />
-                  <span>TikTok, Instagram, and X specific scripts daily</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <CheckCircle2 className="mt-0.5 h-5 w-5 flex-shrink-0 text-emerald-400" />
-                  <span>Librarian Strategy Notes on every blueprint</span>
-                </li>
-              </ul>
-            </div>
-            <Link
-              href="/login?view=signup"
-              className="mt-auto inline-flex min-h-[60px] w-full items-center justify-center gap-2 rounded-full border-2 border-amber-500 bg-amber-500 px-8 text-base font-semibold text-slate-950 shadow-lg transition-all hover:border-amber-400 hover:bg-amber-400 hover:shadow-xl hover:shadow-amber-500/60 hover:scale-[1.02]"
-            >
-              Get Started
-              <ArrowRight className="h-5 w-5" />
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      {/* Features Overview */}
-      <section className="mx-auto w-full max-w-6xl space-y-8">
-        <div className="text-center">
-          <h2 className="text-2xl font-semibold text-slate-50 md:text-3xl">
-            What You Get
-          </h2>
-          <p className="mt-2 text-sm text-slate-400 md:text-base">
-            Three core tools that build your creator foundation.
+          <p className="text-sm text-slate-400 md:text-base max-w-xl mx-auto">
+            Every day, the same workflow. Octane Nexus makes each step faster.
           </p>
         </div>
 
         <div className="grid gap-6 md:grid-cols-3">
-          {/* Identity Sniper Feature */}
-          <div className="flex flex-col gap-4 rounded-3xl border border-slate-800 bg-slate-900/60 p-8 shadow-xl">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-500/15 text-amber-400">
-              <Target className="h-7 w-7" />
+          <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 space-y-4">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-500/20 text-amber-400">
+              <TrendingUp className="h-6 w-6" />
             </div>
-            <div className="space-y-2">
-              <h3 className="text-xl font-semibold text-slate-50">
-                Identity Sniper
-              </h3>
-              <p className="text-sm text-slate-300">
-                Secure your handle and bio across Instagram, TikTok, and X in
-                minutes. Claim your digital identity before someone else does.
-              </p>
-            </div>
+            <h3 className="text-lg font-semibold text-slate-50">1. Discover</h3>
+            <p className="text-sm text-slate-300 leading-relaxed">
+              See what&apos;s working right now. Trending hashtags, viral formats, and niche surveillance 
+              across TikTok, Instagram, and X — updated daily.
+            </p>
           </div>
 
-          {/* Algorithm Lab Feature */}
-          <div className="flex flex-col gap-4 rounded-3xl border border-slate-800 bg-slate-900/60 p-8 shadow-xl">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-500/15 text-amber-400">
-              <Sparkles className="h-7 w-7" />
+          <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 space-y-4">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-500/20 text-amber-400">
+              <Sparkles className="h-6 w-6" />
             </div>
-            <div className="space-y-2">
-              <h3 className="text-xl font-semibold text-slate-50">
-                Algorithm Lab
-              </h3>
-              <p className="text-sm text-slate-300">
-                Turn niche trends into filmable scripts with Gemini AI. Never
-                run out of content ideas again—your personal idea generator,
-                powered by advanced AI.
-              </p>
-            </div>
+            <h3 className="text-lg font-semibold text-slate-50">2. Create</h3>
+            <p className="text-sm text-slate-300 leading-relaxed">
+              Generate scripts, captions, and content ideas with AI that knows your brand voice. 
+              Send trending ideas straight to your production board.
+            </p>
           </div>
 
-          {/* Active Librarian Feature */}
-          <div className="flex flex-col gap-4 rounded-3xl border border-slate-800 bg-slate-900/60 p-8 shadow-xl">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-500/15 text-amber-400">
-              <Zap className="h-7 w-7" />
+          <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 space-y-4">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-500/20 text-amber-400">
+              <CalendarDays className="h-6 w-6" />
             </div>
-            <div className="space-y-2">
-              <h3 className="text-xl font-semibold text-slate-50">
-                The Active Librarian
-              </h3>
-              <p className="text-sm text-slate-300">
-                Your persistent AI Talent Manager that tracks your growth and
-                consistency. Stay on track with automated insights and
-                personalized guidance.
-              </p>
-            </div>
+            <h3 className="text-lg font-semibold text-slate-50">3. Ship</h3>
+            <p className="text-sm text-slate-300 leading-relaxed">
+              Move posts through your pipeline — from idea to script to ready. 
+              Schedule everything on one calendar. Track your streak.
+            </p>
           </div>
         </div>
       </section>
 
-      {/* Testimonials */}
-      <section className="mx-auto w-full max-w-6xl space-y-8">
-        <div className="text-center">
+      {/* Features Grid */}
+      <section className="mx-auto w-full max-w-5xl space-y-10">
+        <div className="text-center space-y-3">
           <h2 className="text-2xl font-semibold text-slate-50 md:text-3xl">
-            What Creators Are Saying
+            Everything You Need. Nothing You Don&apos;t.
           </h2>
-          <p className="mt-2 text-sm text-slate-400 md:text-base">
-            Join creators who secured their identity and leveled up their content.
-          </p>
         </div>
-        <div className="grid gap-6 md:grid-cols-3">
-          <div className="flex flex-col gap-4 rounded-3xl border border-slate-800 bg-slate-900/60 p-8 shadow-xl">
-            <Quote className="h-10 w-10 text-amber-500/40" aria-hidden />
-            <p className="text-sm text-slate-300 leading-relaxed">
-              I was paying for three different tools and still couldn&apos;t keep my handles consistent. 
-              Octane Nexus got my identity locked in one afternoon. The blueprints actually sound like me.
-            </p>
-            <div>
-              <p className="font-semibold text-slate-50">Jordan M.</p>
-              <p className="text-xs text-slate-400">Content Creator</p>
+
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {[
+            { icon: TrendingUp, title: 'Niche Surveillance', desc: 'See what\'s going viral in your niche with view counts and breakdowns of why it worked.' },
+            { icon: MessageCircle, title: 'AI Content Advisor', desc: 'Chat with an AI that knows your brand and helps you brainstorm, write, and optimize.' },
+            { icon: LayoutGrid, title: 'Production Board', desc: 'Kanban-style pipeline. Move content from idea → scripting → filming → ready → posted.' },
+            { icon: CalendarDays, title: 'Content Calendar', desc: 'Visual schedule for all your posts. See your week at a glance.' },
+            { icon: UserCircle, title: 'Identity Builder', desc: 'AI-powered bios, handle checking, and brand asset generation across all platforms.' },
+            { icon: Zap, title: 'Posting Streaks', desc: 'Track consistency with daily streaks and XP. Gamified accountability that works.' },
+          ].map((feature) => (
+            <div key={feature.title} className="flex items-start gap-4 rounded-xl border border-slate-800 bg-slate-900/40 p-5">
+              <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-amber-500/15 text-amber-400">
+                <feature.icon className="h-5 w-5" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-sm font-semibold text-slate-100">{feature.title}</h3>
+                <p className="text-xs text-slate-400 leading-relaxed">{feature.desc}</p>
+              </div>
             </div>
-          </div>
-          <div className="flex flex-col gap-4 rounded-3xl border border-slate-800 bg-slate-900/60 p-8 shadow-xl">
-            <Quote className="h-10 w-10 text-amber-500/40" aria-hidden />
-            <p className="text-sm text-slate-300 leading-relaxed">
-              The Authority Vault paid for itself in the first month. Having scripts ready for TikTok, 
-              IG, and X that match my voice changed how often I actually post. No more staring at a blank caption.
-            </p>
-            <div>
-              <p className="font-semibold text-slate-50">Samira K.</p>
-              <p className="text-xs text-slate-400">YouTube Strategist</p>
-            </div>
-          </div>
-          <div className="flex flex-col gap-4 rounded-3xl border border-slate-800 bg-slate-900/60 p-8 shadow-xl">
-            <Quote className="h-10 w-10 text-amber-500/40" aria-hidden />
-            <p className="text-sm text-slate-300 leading-relaxed">
-              One-time payment, no subscription creep. My handles are secured and the Librarian keeps me 
-              on track. Finally feel like I&apos;m running my creator business instead of the other way around.
-            </p>
-            <div>
-              <p className="font-semibold text-slate-50">Alex T.</p>
-              <p className="text-xs text-slate-400">Fitness Creator</p>
-            </div>
-          </div>
+          ))}
         </div>
       </section>
 
       {/* Final CTA */}
       <section className="mx-auto w-full max-w-3xl space-y-6 text-center">
         <h2 className="text-2xl font-semibold text-slate-50 md:text-3xl">
-          Ready to run your creator business like a pro?
+          Your content deserves a real workflow.
         </h2>
-        <p className="text-sm text-slate-400 md:text-base">
-          Secure your identity. Train your voice. Get your content pipeline built—one time.
+        <p className="text-sm text-slate-400 md:text-base max-w-lg mx-auto">
+          Stop winging it. Build your creator identity, find what&apos;s trending, 
+          and ship content consistently — all from one dashboard.
         </p>
         <Link
           href="/login?view=signup"
-          className="inline-flex min-h-[60px] items-center justify-center gap-2 rounded-full border-2 border-amber-500 bg-amber-500 px-8 text-base font-semibold text-slate-950 shadow-lg transition-all hover:border-amber-400 hover:bg-amber-400 hover:shadow-xl hover:shadow-amber-500/60 hover:scale-[1.02]"
+          className="inline-flex min-h-[56px] items-center justify-center gap-2 rounded-full border-2 border-amber-500 bg-amber-500 px-8 text-base font-semibold text-slate-950 shadow-lg transition-all hover:border-amber-400 hover:bg-amber-400 hover:shadow-xl hover:shadow-amber-500/60 hover:scale-[1.02]"
         >
-          Get Started
+          Get Started — It&apos;s Free
           <ArrowRight className="h-5 w-5" />
         </Link>
       </section>
 
       {/* Footer */}
       <footer className="mx-auto w-full max-w-7xl border-t border-slate-800 px-4 pt-8 pb-8">
-        <div className="flex flex-col items-center justify-between gap-4 sm:flex-row sm:items-center">
+        <div className="flex flex-col items-center justify-between gap-4 sm:flex-row">
           <p className="text-sm text-slate-400">
             © {new Date().getFullYear()} Octane Nexus. All rights reserved.
           </p>
-          <nav className="flex items-center gap-6" aria-label="Footer">
-            <Link
-              href="#"
-              className="text-sm text-slate-400 transition hover:text-amber-400"
-            >
-              Privacy Policy
-            </Link>
-            <Link
-              href="#"
-              className="text-sm text-slate-400 transition hover:text-amber-400"
-            >
-              Terms of Service
-            </Link>
-          </nav>
         </div>
       </footer>
     </main>
