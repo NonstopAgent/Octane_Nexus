@@ -6,7 +6,7 @@ import { Sparkles, ArrowRight, TrendingUp, MessageCircle, LayoutGrid, CalendarDa
 
 function HomePageContent() {
   return (
-    <main className="mx-auto flex min-h-screen max-w-7xl flex-col gap-20 px-4 py-16 md:py-24">
+    <main className="mx-auto flex max-w-7xl flex-col gap-20 px-4 py-16 md:py-24">
       {/* Hero Section */}
       <section className="mx-auto max-w-4xl space-y-8 text-center">
         <div className="inline-flex rounded-full border border-amber-500/40 bg-amber-500/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-amber-300">
