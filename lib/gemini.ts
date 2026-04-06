@@ -1684,7 +1684,11 @@ export type NexusChatMessage = {
 
 /**
  * Nexus chat assistant. Loads user's niche and brand vision from profile,
- * then chats with Gemini using that context as a system prompt.
+ * PLUS the creator memory layer (recent scripts, hooks, top performers, starred items),
+ * then chats with Gemini using all of that as system context.
+ *
+ * This is what makes Nexus actually personal — every reply is grounded
+ * in the creator's actual work, not generic advice.
  */
 export async function chatWithNexus(
   messages: NexusChatMessage[],
@@ -1695,10 +1699,11 @@ export async function chatWithNexus(
     return "I'm not configured yet. The admin needs to set up the Gemini API key.";
   }
 
-  // Load user context from Supabase profile
+  // Load user context from Supabase profile + memory layer
   let niche = 'content creation';
   let brandVision = '';
   let vibe = '';
+  let memoryContext = '';
   try {
     const { createClient } = await import('@supabase/supabase-js');
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -1715,9 +1720,13 @@ export async function chatWithNexus(
       if (profile?.niche) niche = profile.niche;
       if (profile?.vibe) vibe = profile.vibe;
       if (profile?.brand_vision) brandVision = profile.brand_vision;
+
+      // Load the creator memory context — this is the moat
+      const { getMemoryContext } = await import('@/lib/creatorMemory');
+      memoryContext = await getMemoryContext(admin, userId);
     }
   } catch (err) {
-    console.warn('chatWithNexus: failed to load profile context:', err);
+    console.warn('chatWithNexus: failed to load profile/memory context:', err);
   }
 
   const systemPrompt = `You are Nexus, a sharp, tactical content advisor for social media creators. You help creators brainstorm ideas, write scripts, improve hooks, optimize captions, and grow their audience.
@@ -1726,7 +1735,9 @@ Your user creates content about: ${niche}
 ${vibe ? `Their style: ${vibe}` : ''}
 ${brandVision ? `Brand vision: ${brandVision}` : ''}
 
-Be direct, specific, and practical. Reference their niche when giving examples. Avoid generic advice — every response should feel tailored to their world. Keep responses conversational and punchy. Don't use bullet lists unless absolutely necessary.`;
+${memoryContext}
+
+Be direct, specific, and practical. Reference their niche AND their actual saved work when giving examples. If you see they've already used a particular hook or angle in their memory, don't suggest it again unless they explicitly ask for variations. Avoid generic advice — every response should feel tailored to THEIR world, not a generic creator. Keep responses conversational and punchy. Don't use bullet lists unless absolutely necessary.`;
 
   try {
     const geminiMessages = messages.map((m) => ({

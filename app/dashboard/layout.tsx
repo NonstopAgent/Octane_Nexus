@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { UserCircle, BookOpen, Settings, MessageCircle, Sparkles, CalendarDays, LayoutGrid, TrendingUp } from 'lucide-react';
+import { UserCircle, BookOpen, Settings, MessageCircle, Sparkles, CalendarDays, LayoutGrid, TrendingUp, Brain } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { getCalibrationLevel } from '@/lib/gemini';
 import CreatorDailyBar from '@/components/dashboard/CreatorDailyBar';
@@ -85,6 +85,7 @@ export default function DashboardLayout({
     { href: '/dashboard/library', label: 'Library', icon: BookOpen, external: false },
     { href: '/dashboard/trends', label: 'Trends', icon: TrendingUp, external: false },
     { href: '/dashboard/chat', label: 'Nexus Chat', icon: MessageCircle, external: false },
+    { href: '/dashboard/memory', label: 'Memory', icon: Brain, external: false },
     { href: '/dashboard/post-lab', label: 'Post Lab', icon: Sparkles, external: false },
     { href: '/dashboard/production', label: 'Production', icon: LayoutGrid, external: false },
     { href: '/dashboard/schedule', label: 'Schedule', icon: CalendarDays, external: false },

@@ -2,7 +2,8 @@
 
 import { useState, useRef, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Send, Bot, User, Loader2, Paperclip } from 'lucide-react';
+import { Send, Bot, User, Loader2, Paperclip, Bookmark, BookmarkCheck } from 'lucide-react';
+import { toast } from 'sonner';
 import { supabase } from '@/lib/supabaseClient';
 import type { IdeaAnalysis } from '@/lib/gemini';
 import StatusChip from '@/components/ui/StatusChip';
@@ -38,6 +39,8 @@ function ChatPageContent() {
     strongestPlatform: string | null;
     strategicFlags: string[];
   } | null>(null);
+  const [savedMessageIds, setSavedMessageIds] = useState<Set<string>>(new Set());
+  const [savingMessageId, setSavingMessageId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -85,6 +88,33 @@ function ChatPageContent() {
       .then((data) => data && setContextStrip(data))
       .catch(() => {});
   }, [userId]);
+
+  async function handleSaveMessage(msg: Message) {
+    if (savedMessageIds.has(msg.id) || savingMessageId === msg.id) return;
+    setSavingMessageId(msg.id);
+    try {
+      const res = await fetch('/api/memory/artifacts', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          artifact_type: 'script',
+          content: msg.text,
+          source: 'chat_save',
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error((data as { error?: string }).error || 'Failed to save');
+      }
+      setSavedMessageIds((prev) => new Set(prev).add(msg.id));
+      toast.success('Saved to memory');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to save to memory');
+    } finally {
+      setSavingMessageId(null);
+    }
+  }
 
   function detectRatePattern(text: string): string | null {
     const patterns = [
@@ -284,6 +314,33 @@ function ChatPageContent() {
                   <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">
                     {msg.text}
                   </p>
+                )}
+                {msg.sender === 'bot' && msg.id !== 'welcome' && (
+                  <div className="mt-2 pt-2 border-t border-slate-700/40">
+                    <button
+                      type="button"
+                      onClick={() => handleSaveMessage(msg)}
+                      disabled={savedMessageIds.has(msg.id) || savingMessageId === msg.id}
+                      className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-amber-300 transition disabled:cursor-not-allowed disabled:hover:text-emerald-400"
+                    >
+                      {savedMessageIds.has(msg.id) ? (
+                        <>
+                          <BookmarkCheck className="h-3.5 w-3.5 text-emerald-400" />
+                          <span className="text-emerald-400">Saved to memory</span>
+                        </>
+                      ) : savingMessageId === msg.id ? (
+                        <>
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          <span>Saving…</span>
+                        </>
+                      ) : (
+                        <>
+                          <Bookmark className="h-3.5 w-3.5" />
+                          <span>Save to memory</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
