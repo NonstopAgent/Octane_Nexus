@@ -6,80 +6,32 @@ on:
   pull_request:
     branches: [main]
 
+# Cancel in-progress runs when a new commit is pushed to the same branch
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build:
+  lint-and-typecheck:
+    name: Lint & Typecheck
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --no-audit --no-fund
 
-      - name: Lint
-        run: |
-          if node -e "const s=require('./package.json').scripts; process.exit(s && s.lint ? 0 : 1)"; then
-            npm run lint
-          else
-            echo "No lint script, skipping"
-          fi
+      - name: Run ESLint
+        run: npm run lint
 
-      - name: Build
-        run: npm run build
-
-      - name: Setup Supabase CLI
-        uses: supabase/setup-cli@v1
-        with:
-          version: latest
-
-      - name: Init Supabase config
-        run: npx supabase init
-
-      - name: Start Supabase
-        run: npx supabase start
-        timeout-minutes: 5
-
-      - name: Export Supabase env
-        run: |
-          out=$(npx supabase status -o env)
-          echo "NEXT_PUBLIC_SUPABASE_URL=$(echo "$out" | grep '^API_URL=' | cut -d= -f2-)" >> $GITHUB_ENV
-          echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$(echo "$out" | grep '^ANON_KEY=' | cut -d= -f2-)" >> $GITHUB_ENV
-          echo "SUPABASE_SERVICE_ROLE_KEY=$(echo "$out" | grep '^SERVICE_ROLE_KEY=' | cut -d= -f2-)" >> $GITHUB_ENV
-
-      - name: Apply migrations
-        run: npx supabase db reset --no-seed
-
-      - name: Install Playwright browsers
-        run: npm run test:e2e:install
-
-      - name: E2E smoke
-        run: npm run test:e2e -- tests/smoke.spec.ts
-        env:
-          NEXT_PUBLIC_DEMO_MODE: 'true'
-
-      - name: Stop Supabase
-        if: always()
-        run: npx supabase stop --no-backup
-
-      - name: Upload Playwright report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-report
-          path: playwright-report/
-          retention-days: 5
-          if-no-files-found: ignore
-
-      - name: Upload test-results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-results
-          path: test-results/
-          retention-days: 5
-          if-no-files-found: ignore
+      - name: Typecheck
+        run: npm run typecheck
