@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Brain, Plus, Loader2, Star, Trash2, Bookmark } from 'lucide-react';
+import { Brain, Plus, Loader2, Star, Bookmark } from 'lucide-react';
 import { toast } from 'sonner';
 import DashboardPageHeader from '@/components/dashboard/DashboardPageHeader';
 import StatusChip from '@/components/ui/StatusChip';
