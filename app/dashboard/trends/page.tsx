@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { TrendingUp, Eye, Send, Scissors } from 'lucide-react';
 import { toast } from 'sonner';
-import { supabase } from '@/lib/supabaseClient';
 import { SkeletonCardGrid } from '@/components/ui/SkeletonCard';
 import EmptyState from '@/components/ui/EmptyState';
 import StatusChip from '@/components/ui/StatusChip';
@@ -18,44 +17,7 @@ type TrendingVideo = {
   whyItWorked: string;
 };
 
-const MOCK_TRENDING_VIDEOS: TrendingVideo[] = [
-  {
-    id: '1',
-    title: 'Stop Doing Crunches — Do This Instead',
-    viewCount: '1.2M',
-    whyItWorked: 'Contrarian hook + quick value payoff. Viewers stayed for the "instead" reveal.',
-  },
-  {
-    id: '2',
-    title: 'The 10-Minute Dad Workout That Actually Works',
-    viewCount: '890K',
-    whyItWorked: 'Specific time promise + "actually works" builds trust. Low barrier to try.',
-  },
-  {
-    id: '3',
-    title: 'Why I Quit the Gym (And You Should Too)',
-    viewCount: '2.1M',
-    whyItWorked: 'Bold take + personal story. Sparks debate in comments = algorithm boost.',
-  },
-  {
-    id: '4',
-    title: 'POV: Your Wife Catches You Mid-Workout',
-    viewCount: '756K',
-    whyItWorked: 'Relatable POV format. Humor + fitness crossover = broad appeal.',
-  },
-  {
-    id: '5',
-    title: '5 Exercises Every Busy Dad Should Do',
-    viewCount: '543K',
-    whyItWorked: 'List format + "busy dad" niche. Clear value proposition in title.',
-  },
-  {
-    id: '6',
-    title: 'The Truth About Dad Bod',
-    viewCount: '1.8M',
-    whyItWorked: 'Emotional topic + reframe. "Truth" creates curiosity gap.',
-  },
-];
+const FALLBACK_VIDEOS: TrendingVideo[] = [];
 
 export default function TrendsPage() {
   const router = useRouter();
@@ -85,19 +47,30 @@ export default function TrendsPage() {
 
   useEffect(() => {
     async function load() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('niche')
-          .eq('id', user.id)
-          .maybeSingle();
-        if (profile?.niche) {
-          setNiche(profile.niche);
+      try {
+        const res = await fetch('/api/trends/generate', { credentials: 'include' });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.niche) setNiche(data.niche);
+          if (Array.isArray(data.videos)) {
+            // Ensure each video has an id
+            const withIds = data.videos.map((v: TrendingVideo, i: number) => ({
+              ...v,
+              id: v.id || String(i + 1),
+            }));
+            setVideos(withIds);
+          } else {
+            setVideos(FALLBACK_VIDEOS);
+          }
+        } else {
+          setVideos(FALLBACK_VIDEOS);
         }
+      } catch (err) {
+        console.error('Failed to load trends:', err);
+        setVideos(FALLBACK_VIDEOS);
+      } finally {
+        setLoading(false);
       }
-      setVideos(MOCK_TRENDING_VIDEOS);
-      setLoading(false);
     }
     load();
   }, []);

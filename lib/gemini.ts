@@ -1683,15 +1683,82 @@ export type NexusChatMessage = {
 };
 
 /**
- * TODO: Replace with real implementation. Nexus chat assistant.
+ * Nexus chat assistant. Loads user's niche and brand vision from profile,
+ * then chats with Gemini using that context as a system prompt.
  */
 export async function chatWithNexus(
   messages: NexusChatMessage[],
   userId: string
 ): Promise<string> {
-  void messages;
-  void userId;
-  return "Nexus chat is not implemented yet. Configure Gemini and add the real chatWithNexus implementation in lib/gemini.ts.";
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    return "I'm not configured yet. The admin needs to set up the Gemini API key.";
+  }
+
+  // Load user context from Supabase profile
+  let niche = 'content creation';
+  let brandVision = '';
+  let vibe = '';
+  try {
+    const { createClient } = await import('@supabase/supabase-js');
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (supabaseUrl && serviceKey && userId) {
+      const admin = createClient(supabaseUrl, serviceKey, {
+        auth: { persistSession: false },
+      });
+      const { data: profile } = await admin
+        .from('profiles')
+        .select('niche, vibe, brand_vision')
+        .eq('id', userId)
+        .maybeSingle();
+      if (profile?.niche) niche = profile.niche;
+      if (profile?.vibe) vibe = profile.vibe;
+      if (profile?.brand_vision) brandVision = profile.brand_vision;
+    }
+  } catch (err) {
+    console.warn('chatWithNexus: failed to load profile context:', err);
+  }
+
+  const systemPrompt = `You are Nexus, a sharp, tactical content advisor for social media creators. You help creators brainstorm ideas, write scripts, improve hooks, optimize captions, and grow their audience.
+
+Your user creates content about: ${niche}
+${vibe ? `Their style: ${vibe}` : ''}
+${brandVision ? `Brand vision: ${brandVision}` : ''}
+
+Be direct, specific, and practical. Reference their niche when giving examples. Avoid generic advice — every response should feel tailored to their world. Keep responses conversational and punchy. Don't use bullet lists unless absolutely necessary.`;
+
+  try {
+    const geminiMessages = messages.map((m) => ({
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: m.content }],
+    }));
+
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: systemPrompt }] },
+          contents: geminiMessages,
+          generationConfig: { temperature: 0.8, maxOutputTokens: 1000 },
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      console.error('Gemini chat error:', response.status, await response.text());
+      return "I hit an error talking to the AI. Try again in a moment?";
+    }
+
+    const data = await response.json();
+    const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    return reply || "I didn't get a response. Try rephrasing?";
+  } catch (err) {
+    console.error('chatWithNexus error:', err);
+    return "Something went wrong on my end. Try again?";
+  }
 }
 
 export type GenerateVideoScriptResult = {
