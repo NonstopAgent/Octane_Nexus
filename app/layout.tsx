@@ -5,6 +5,7 @@ import { ActiveLibrarian } from '@/components/ActiveLibrarian';
 import { NavigationHeader } from '@/components/NavigationHeader';
 import { SystemStatusBanner } from '@/components/SystemStatusBanner';
 import { SupabaseSessionProvider } from '@/components/SupabaseSessionProvider';
+import { PostHogProvider } from '@/components/PostHogProvider';
 
 export const metadata = {
   title: 'Octane Nexus',
@@ -15,16 +16,18 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" className="h-full">
       <body className="h-full bg-slate-950 text-slate-50 antialiased">
-        <SupabaseSessionProvider>
-          <div className="relative min-h-screen">
-            <NavigationHeader />
-            <SystemStatusBanner />
-            {children}
-            <Suspense fallback={null}>
-              <ActiveLibrarian />
-            </Suspense>
-          </div>
-        </SupabaseSessionProvider>
+        <PostHogProvider>
+          <SupabaseSessionProvider>
+            <div className="relative min-h-screen">
+              <NavigationHeader />
+              <SystemStatusBanner />
+              {children}
+              <Suspense fallback={null}>
+                <ActiveLibrarian />
+              </Suspense>
+            </div>
+          </SupabaseSessionProvider>
+        </PostHogProvider>
       </body>
     </html>
   );
