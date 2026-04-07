@@ -5,6 +5,7 @@ import { Brain, Plus, Loader2, Star, Bookmark } from 'lucide-react';
 import { toast } from 'sonner';
 import DashboardPageHeader from '@/components/dashboard/DashboardPageHeader';
 import StatusChip from '@/components/ui/StatusChip';
+import YouTubeConnection from '@/components/dashboard/YouTubeConnection';
 
 type ArtifactType =
   | 'script' | 'hook' | 'caption' | 'idea'
@@ -109,6 +110,9 @@ export default function MemoryPage() {
         icon={<Brain className="h-5 w-5" />}
         actions={<StatusChip variant="beta" />}
       />
+
+      {/* YouTube connection — import real videos into memory */}
+      <YouTubeConnection onImported={loadArtifacts} />
 
       {/* Add new artifact */}
       <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5 space-y-4">
