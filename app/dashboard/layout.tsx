@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { UserCircle, BookOpen, Settings, MessageCircle, Sparkles, CalendarDays, LayoutGrid, TrendingUp, Brain } from 'lucide-react';
+import { UserCircle, BookOpen, Settings, MessageCircle, Sparkles, CalendarDays, LayoutGrid, TrendingUp, Brain, Sunrise } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { getCalibrationLevel } from '@/lib/gemini';
 import CreatorDailyBar from '@/components/dashboard/CreatorDailyBar';
@@ -83,6 +83,7 @@ export default function DashboardLayout({
   const navItems = [
     { href: '/identity', label: 'Identity', icon: UserCircle, external: false },
     { href: '/dashboard/library', label: 'Library', icon: BookOpen, external: false },
+    { href: '/dashboard/brief', label: 'Daily Brief', icon: Sunrise, external: false },
     { href: '/dashboard/trends', label: 'Trends', icon: TrendingUp, external: false },
     { href: '/dashboard/chat', label: 'Nexus Chat', icon: MessageCircle, external: false },
     { href: '/dashboard/memory', label: 'Memory', icon: Brain, external: false },
@@ -113,6 +114,9 @@ export default function DashboardLayout({
     }
     if (href === '/dashboard/trends') {
       return pathname === '/dashboard/trends';
+    }
+    if (href === '/dashboard/brief') {
+      return pathname === '/dashboard/brief';
     }
     if (href === '/identity') {
       return pathname?.startsWith('/identity') || false;

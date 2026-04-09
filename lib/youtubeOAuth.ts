@@ -6,7 +6,8 @@
  * client — tokens are NEVER exposed to the browser.
  */
 
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { createServiceRoleClient } from '@/lib/supabaseServer';
 
 export const GOOGLE_OAUTH_BASE = 'https://accounts.google.com/o/oauth2/v2/auth';
 export const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
@@ -48,17 +49,9 @@ export function getOAuthConfig(): {
   return { clientId, clientSecret, redirectUri };
 }
 
-/**
- * Service role Supabase client. Bypasses RLS — only use server-side
- * for OAuth token storage and admin reads/writes.
- */
+/** Same as createServiceRoleClient; kept for existing YouTube route imports. */
 export function getServiceRoleClient(): SupabaseClient {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) {
-    throw new Error('Missing Supabase service role config');
-  }
-  return createClient(url, key, { auth: { persistSession: false } });
+  return createServiceRoleClient();
 }
 
 /**
@@ -208,6 +201,125 @@ export async function fetchYouTubeVideos(
     statistics?: { viewCount?: string; likeCount?: string; commentCount?: string };
     contentDetails?: { duration?: string };
   }) => ({
+    id: v.id,
+    title: v.snippet?.title || '',
+    description: v.snippet?.description || '',
+    publishedAt: v.snippet?.publishedAt || '',
+    thumbnailUrl: v.snippet?.thumbnails?.medium?.url || '',
+    viewCount: Number(v.statistics?.viewCount) || 0,
+    likeCount: Number(v.statistics?.likeCount) || 0,
+    commentCount: Number(v.statistics?.commentCount) || 0,
+    duration: v.contentDetails?.duration || '',
+  }));
+}
+
+
+// ============================================================
+// PUBLIC CHANNEL HELPERS
+// These use the server-side YOUTUBE_API_KEY (not OAuth) to read
+// public channel data. Used for tracked competitor channels.
+// ============================================================
+
+function getPublicApiKey(): string | undefined {
+  return process.env.YOUTUBE_API_KEY;
+}
+
+export type PublicChannel = {
+  id: string;
+  title: string;
+  handle: string | null;
+  thumbnailUrl: string;
+  subscriberCount: number;
+  description: string;
+};
+
+/**
+ * Search YouTube for channels matching a query string.
+ * Returns up to 8 results suitable for a picker UI.
+ */
+export async function searchYouTubeChannels(query: string): Promise<PublicChannel[]> {
+  const key = getPublicApiKey();
+  if (!key) throw new Error('YOUTUBE_API_KEY not set');
+
+  // Step 1: search for channel candidates
+  const searchUrl = `${YOUTUBE_API_BASE}/search?part=snippet&type=channel&maxResults=8&q=${encodeURIComponent(query)}&key=${key}`;
+  const searchRes = await fetch(searchUrl);
+  if (!searchRes.ok) throw new Error(`search failed: ${searchRes.status}`);
+  const searchData = await searchRes.json();
+  const channelIds: string[] = (searchData?.items || [])
+    .map((it: { id?: { channelId?: string } }) => it.id?.channelId)
+    .filter((id: string | undefined): id is string => Boolean(id));
+  if (channelIds.length === 0) return [];
+
+  // Step 2: hydrate full channel details (subscriber count, handle, thumbnail)
+  const detailsUrl = `${YOUTUBE_API_BASE}/channels?part=snippet,statistics&id=${channelIds.join(',')}&key=${key}`;
+  const detailsRes = await fetch(detailsUrl);
+  if (!detailsRes.ok) throw new Error(`channels.list failed: ${detailsRes.status}`);
+  const detailsData = await detailsRes.json();
+
+  return ((detailsData?.items || []) as Array<{
+    id: string;
+    snippet?: {
+      title?: string;
+      description?: string;
+      customUrl?: string;
+      thumbnails?: { medium?: { url?: string }; default?: { url?: string } };
+    };
+    statistics?: { subscriberCount?: string };
+  }>).map((c) => ({
+    id: c.id,
+    title: c.snippet?.title || '',
+    handle: c.snippet?.customUrl || null,
+    thumbnailUrl: c.snippet?.thumbnails?.medium?.url || c.snippet?.thumbnails?.default?.url || '',
+    subscriberCount: Number(c.statistics?.subscriberCount) || 0,
+    description: (c.snippet?.description || '').slice(0, 200),
+  }));
+}
+
+/**
+ * Fetch the most recent videos for a public YouTube channel.
+ * Uses the server YOUTUBE_API_KEY (no OAuth needed).
+ * Returns up to `limit` videos (default 10) with full statistics.
+ */
+export async function fetchPublicChannelVideos(
+  channelId: string,
+  limit = 10
+): Promise<YouTubeVideo[]> {
+  const key = getPublicApiKey();
+  if (!key) throw new Error('YOUTUBE_API_KEY not set');
+
+  // Step 1: Find the channel's uploads playlist ID
+  const channelUrl = `${YOUTUBE_API_BASE}/channels?part=contentDetails&id=${channelId}&key=${key}`;
+  const channelRes = await fetch(channelUrl);
+  if (!channelRes.ok) throw new Error(`channels.list failed: ${channelRes.status}`);
+  const channelData = await channelRes.json();
+  const uploadsPlaylistId =
+    channelData?.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
+  if (!uploadsPlaylistId) return [];
+
+  // Step 2: Get items from the uploads playlist
+  const maxResults = Math.min(Math.max(limit, 1), 50);
+  const itemsUrl = `${YOUTUBE_API_BASE}/playlistItems?part=snippet&playlistId=${uploadsPlaylistId}&maxResults=${maxResults}&key=${key}`;
+  const itemsRes = await fetch(itemsUrl);
+  if (!itemsRes.ok) throw new Error(`playlistItems.list failed: ${itemsRes.status}`);
+  const itemsData = await itemsRes.json();
+  const videoIds: string[] = (itemsData?.items || [])
+    .map((it: { snippet?: { resourceId?: { videoId?: string } } }) => it.snippet?.resourceId?.videoId)
+    .filter((id: string | undefined): id is string => Boolean(id));
+  if (videoIds.length === 0) return [];
+
+  // Step 3: Hydrate videos with statistics
+  const videosUrl = `${YOUTUBE_API_BASE}/videos?part=snippet,statistics,contentDetails&id=${videoIds.join(',')}&key=${key}`;
+  const videosRes = await fetch(videosUrl);
+  if (!videosRes.ok) throw new Error(`videos.list failed: ${videosRes.status}`);
+  const videosData = await videosRes.json();
+
+  return ((videosData?.items || []) as Array<{
+    id: string;
+    snippet?: { title?: string; description?: string; publishedAt?: string; thumbnails?: { medium?: { url?: string } } };
+    statistics?: { viewCount?: string; likeCount?: string; commentCount?: string };
+    contentDetails?: { duration?: string };
+  }>).map((v) => ({
     id: v.id,
     title: v.snippet?.title || '',
     description: v.snippet?.description || '',
