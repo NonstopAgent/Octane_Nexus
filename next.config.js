@@ -1,12 +1,30 @@
-const nextConfig = {};
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  experimental: {
+    instrumentationHook: true,
+  },
+};
 
-const withSentry =
-  process.env.SENTRY_DSN &&
-  typeof require('@sentry/nextjs').withSentryConfig === 'function'
-    ? require('@sentry/nextjs').withSentryConfig
-    : (config) => config;
+function getWithSentryConfig() {
+  try {
+    return require('@sentry/nextjs').withSentryConfig;
+  } catch {
+    return null;
+  }
+}
 
-module.exports = withSentry(nextConfig, {
-  silent: !process.env.CI,
-  authToken: process.env.SENTRY_AUTH_TOKEN,
-});
+const withSentryConfig = getWithSentryConfig();
+const sentryDsn = process.env.SENTRY_DSN || process.env.NEXT_PUBLIC_SENTRY_DSN;
+
+module.exports =
+  withSentryConfig && sentryDsn
+    ? withSentryConfig(nextConfig, {
+        silent: !process.env.CI,
+        authToken: process.env.SENTRY_AUTH_TOKEN,
+        org: process.env.SENTRY_ORG,
+        project: process.env.SENTRY_PROJECT,
+        widenClientFileUpload: true,
+        hideSourceMaps: true,
+        tunnelRoute: '/monitoring',
+      })
+    : nextConfig;
