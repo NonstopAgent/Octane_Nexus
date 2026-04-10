@@ -123,6 +123,7 @@ function ChatPageContent() {
       /^analyze this:\s*(.+)/i,
       /^analyze:\s*(.+)/i,
       /^score this:\s*(.+)/i,
+      /^score:\s*(.+)/i,
     ];
     for (const p of patterns) {
       const m = text.match(p);
@@ -151,6 +152,7 @@ function ChatPageContent() {
       try {
         const res = await fetch('/api/analyze-idea', {
           method: 'POST',
+          credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ idea: ideaToRate, niche }),
         });
@@ -161,7 +163,7 @@ function ChatPageContent() {
           ...prev,
           {
             id: (Date.now() + 1).toString(),
-            text: `Viral Score: ${analysis.viralScore}/100 — ${analysis.prediction}`,
+            text: analysis.prediction,
             sender: 'bot',
             timestamp: new Date(),
             scorecard: analysis,
@@ -297,17 +299,57 @@ function ChatPageContent() {
                 }`}
               >
                 {msg.scorecard ? (
-                  <div className="space-y-2">
-                    <p className="text-sm font-medium text-amber-400">
-                      {msg.scorecard.viralScore}/100
-                    </p>
-                    <p className="text-sm leading-relaxed">{msg.text}</p>
+                  <div className="space-y-3 rounded-xl border border-amber-500/20 bg-slate-900/50 p-3">
+                    <div className="flex flex-wrap items-baseline gap-2">
+                      <span className="text-lg font-bold text-amber-400">
+                        {msg.scorecard.viralScore}/100
+                      </span>
+                      <span className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                        idea score
+                      </span>
+                    </div>
+                    {msg.scorecard.estimatedViewRange && (
+                      <p className="text-xs text-slate-400">
+                        Est. views:{' '}
+                        <span className="text-emerald-300/90">
+                          {msg.scorecard.estimatedViewRange.low.toLocaleString()} –{' '}
+                          {msg.scorecard.estimatedViewRange.high.toLocaleString()}
+                        </span>{' '}
+                        (vs your library — not a guarantee)
+                      </p>
+                    )}
+                    <p className="text-sm font-medium text-slate-200">Confidence</p>
+                    <p className="text-xs text-slate-400">{msg.scorecard.confidenceLevel}</p>
+                    <p className="text-sm leading-relaxed text-slate-200">{msg.text}</p>
+                    {msg.scorecard.supportingPatterns && msg.scorecard.supportingPatterns.length > 0 && (
+                      <div>
+                        <p className="text-xs font-semibold text-emerald-400/90">Supports</p>
+                        <ul className="mt-1 text-xs text-slate-400 space-y-0.5">
+                          {msg.scorecard.supportingPatterns.map((t, i) => (
+                            <li key={i}>+ {t}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {msg.scorecard.hurtingPatterns && msg.scorecard.hurtingPatterns.length > 0 && (
+                      <div>
+                        <p className="text-xs font-semibold text-rose-400/90">Risks</p>
+                        <ul className="mt-1 text-xs text-slate-400 space-y-0.5">
+                          {msg.scorecard.hurtingPatterns.map((t, i) => (
+                            <li key={i}>− {t}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                     {msg.scorecard.tasks?.length ? (
-                      <ul className="text-xs text-slate-400 mt-2 space-y-1">
-                        {msg.scorecard.tasks.slice(0, 3).map((t, i) => (
-                          <li key={i}>• {t}</li>
-                        ))}
-                      </ul>
+                      <>
+                        <p className="text-xs font-semibold text-amber-400/80">Improvements</p>
+                        <ul className="text-xs text-slate-400 mt-1 space-y-1">
+                          {msg.scorecard.tasks.slice(0, 5).map((t, i) => (
+                            <li key={i}>• {t}</li>
+                          ))}
+                        </ul>
+                      </>
                     ) : null}
                   </div>
                 ) : (
@@ -435,7 +477,7 @@ function ChatPageContent() {
           </button>
         </div>
         <p className="text-xs text-slate-500 mt-2 text-center">
-          Enter to send • Shift+Enter for new line • Try &quot;rate this: [your idea]&quot; for viral scoring
+          Enter to send • Shift+Enter for new line • Try &quot;score:&quot; or &quot;rate this:&quot; plus your idea for a scorecard
         </p>
       </div>
     </div>

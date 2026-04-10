@@ -1014,6 +1014,10 @@ export type IdeaAnalysis = {
   prediction: string;           // AI's analysis/prediction
   tasks: string[];              // Actionable tasks array
   confidenceLevel: string;      // e.g. "85% confident based on your recent feedback"
+  /** Rough view band vs this creator's own uploads (when history context was provided). */
+  estimatedViewRange?: { low: number; high: number };
+  supportingPatterns?: string[];
+  hurtingPatterns?: string[];
 };
 
 type CalibrationOutcome = 'viral' | 'average' | 'flop';
@@ -1164,7 +1168,11 @@ async function getMockIdeaAnalysis(idea: string, niche: string): Promise<IdeaAna
   }
 }
 
-export async function analyzeIdea(idea: string, niche: string): Promise<IdeaAnalysis> {
+export async function analyzeIdea(
+  idea: string,
+  niche: string,
+  performanceContext?: string
+): Promise<IdeaAnalysis> {
   const apiKey = getApiKey();
 
   // If no API key, return mock data immediately
@@ -1173,17 +1181,33 @@ export async function analyzeIdea(idea: string, niche: string): Promise<IdeaAnal
     return getMockIdeaAnalysis(idea, niche);
   }
 
+  const historyBlock = performanceContext?.trim()
+    ? `
+
+CREATOR PERFORMANCE LIBRARY (use for view-range estimates and pattern bullets; compare this idea to these real titles and view levels):
+${performanceContext.trim()}
+`
+    : '';
+
+  const extraFields = performanceContext?.trim()
+    ? `
+- estimatedViewRange: { "low": number, "high": number } integer estimated YouTube views for this idea vs their history (rough band, not a guarantee)
+- supportingPatterns: array of 2-4 short strings — what in their history supports this idea
+- hurtingPatterns: array of 0-3 short strings — what in their history works against this idea
+`
+    : '';
+
   const requestBody = {
     contents: [{
       parts: [{
-        text: `Analyze this content idea for viral potential: "${idea}" in the niche: "${niche}".
+        text: `Analyze this content idea for viral potential: "${idea}" in the niche: "${niche}".${historyBlock}
 
 You MUST return ONLY a JSON object with:
 - viralScore: number from 0-100 (your predicted performance score)
 - prediction: string explaining WHY you think it will perform that way (strengths + weaknesses)
-- tasks: array of 3-5 actionable strings like ["Script the hook", "Film B-roll", "Edit captions"]
-- confidenceLevel: string like "85% confident based on your last 3 posts"
-
+- tasks: array of 3-5 actionable strings like ["Script the hook", "Film B-roll", "Edit captions"] — specific improvements for this idea
+- confidenceLevel: string like "high | medium | low" plus one short reason (data-grounded if history was provided)
+${extraFields}
 Do NOT return markdown, prose, or commentary. JSON only.`
       }]
     }]
@@ -1226,11 +1250,29 @@ Do NOT return markdown, prose, or commentary. JSON only.`
       Math.min(100, Math.round(parsed.viralScore * (1 + offset)))
     );
 
-    return {
+    const merged: IdeaAnalysis = {
       ...parsed,
       viralScore: adjustedScore,
-      confidenceLevel: await buildConfidenceLabel(),
+      confidenceLevel: parsed.confidenceLevel?.trim()
+        ? parsed.confidenceLevel
+        : await buildConfidenceLabel(),
     };
+
+    if (parsed.estimatedViewRange && typeof parsed.estimatedViewRange === 'object') {
+      const low = Number((parsed.estimatedViewRange as { low?: number }).low);
+      const high = Number((parsed.estimatedViewRange as { high?: number }).high);
+      if (Number.isFinite(low) && Number.isFinite(high)) {
+        merged.estimatedViewRange = { low: Math.round(low), high: Math.round(high) };
+      }
+    }
+    if (Array.isArray(parsed.supportingPatterns)) {
+      merged.supportingPatterns = parsed.supportingPatterns.filter((s) => typeof s === 'string');
+    }
+    if (Array.isArray(parsed.hurtingPatterns)) {
+      merged.hurtingPatterns = parsed.hurtingPatterns.filter((s) => typeof s === 'string');
+    }
+
+    return merged;
   } catch (parseError) {
     console.warn('⚠️ Parse error - returning mock idea analysis:', parseError);
     return getMockIdeaAnalysis(idea, niche);

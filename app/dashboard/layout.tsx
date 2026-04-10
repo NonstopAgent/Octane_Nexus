@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { UserCircle, BookOpen, Settings, MessageCircle, TrendingUp, Brain, Sunrise } from 'lucide-react';
+import { UserCircle, BookOpen, Settings, MessageCircle, TrendingUp, Brain, Sunrise, Mic } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { getCalibrationLevel } from '@/lib/gemini';
 import CreatorDailyBar from '@/components/dashboard/CreatorDailyBar';
@@ -87,6 +87,7 @@ export default function DashboardLayout({
   const navItems = [
     { href: '/dashboard/brief', label: 'Daily Brief', icon: Sunrise, external: false },
     { href: '/dashboard/chat', label: 'Nexus Chat', icon: MessageCircle, external: false },
+    { href: '/dashboard/hook-lab', label: 'Hook Lab', icon: Mic, external: false },
     { href: '/dashboard/memory', label: 'Memory', icon: Brain, external: false },
     { href: '/dashboard/trends', label: 'Trends', icon: TrendingUp, external: false },
     { href: '/dashboard/library', label: 'Library', icon: BookOpen, external: false },
