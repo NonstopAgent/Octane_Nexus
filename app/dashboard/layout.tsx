@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { UserCircle, BookOpen, Settings, MessageCircle, Sparkles, CalendarDays, LayoutGrid, TrendingUp, Brain, Sunrise } from 'lucide-react';
+import { UserCircle, BookOpen, Settings, MessageCircle, TrendingUp, Brain, Sunrise } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { getCalibrationLevel } from '@/lib/gemini';
 import CreatorDailyBar from '@/components/dashboard/CreatorDailyBar';
@@ -80,47 +80,23 @@ export default function DashboardLayout({
     return () => window.removeEventListener('calibration-updated', handler);
   }, []);
 
+  // Strategic pivot: Daily Brief is now the morning landing surface.
+  // Cut Post Lab, Production, Schedule — they duplicated Notion/ClickUp
+  // without adding creator-specific value. Keep the surfaces that feed
+  // or consume the Daily Brief: Brief → Chat → Memory → Trends → Library.
   const navItems = [
-    { href: '/identity', label: 'Identity', icon: UserCircle, external: false },
-    { href: '/dashboard/library', label: 'Library', icon: BookOpen, external: false },
     { href: '/dashboard/brief', label: 'Daily Brief', icon: Sunrise, external: false },
-    { href: '/dashboard/trends', label: 'Trends', icon: TrendingUp, external: false },
     { href: '/dashboard/chat', label: 'Nexus Chat', icon: MessageCircle, external: false },
     { href: '/dashboard/memory', label: 'Memory', icon: Brain, external: false },
-    { href: '/dashboard/post-lab', label: 'Post Lab', icon: Sparkles, external: false },
-    { href: '/dashboard/production', label: 'Production', icon: LayoutGrid, external: false },
-    { href: '/dashboard/schedule', label: 'Schedule', icon: CalendarDays, external: false },
+    { href: '/dashboard/trends', label: 'Trends', icon: TrendingUp, external: false },
+    { href: '/dashboard/library', label: 'Library', icon: BookOpen, external: false },
+    { href: '/identity', label: 'Identity', icon: UserCircle, external: false },
     { href: '/dashboard/settings', label: 'Settings', icon: Settings, external: false },
   ];
 
   const isActive = (href: string) => {
-    if (href === '/dashboard/creator') {
-      return pathname === '/dashboard/creator';
-    }
-    if (href === '/dashboard/library') {
-      return pathname === '/dashboard/library' || pathname === '/dashboard';
-    }
-    if (href === '/dashboard/chat') {
-      return pathname === '/dashboard/chat';
-    }
-    if (href === '/dashboard/post-lab') {
-      return pathname === '/dashboard/post-lab';
-    }
-    if (href === '/dashboard/production') {
-      return pathname === '/dashboard/production';
-    }
-    if (href === '/dashboard/schedule') {
-      return pathname === '/dashboard/schedule';
-    }
-    if (href === '/dashboard/trends') {
-      return pathname === '/dashboard/trends';
-    }
-    if (href === '/dashboard/brief') {
-      return pathname === '/dashboard/brief';
-    }
-    if (href === '/identity') {
-      return pathname?.startsWith('/identity') || false;
-    }
+    if (href === '/identity') return pathname?.startsWith('/identity') || false;
+    if (href === '/dashboard/library') return pathname === '/dashboard/library' || pathname === '/dashboard';
     return pathname === href;
   };
 

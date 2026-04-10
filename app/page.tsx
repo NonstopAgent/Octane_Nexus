@@ -2,7 +2,7 @@
 
 import { Suspense } from 'react';
 import Link from 'next/link';
-import { Sparkles, ArrowRight, TrendingUp, MessageCircle, LayoutGrid, CalendarDays, Zap, UserCircle } from 'lucide-react';
+import { Sunrise, ArrowRight, TrendingUp, MessageCircle, Brain, Youtube, Eye, Zap } from 'lucide-react';
 
 function HomePageContent() {
   return (
@@ -10,16 +10,16 @@ function HomePageContent() {
       {/* Hero Section */}
       <section className="mx-auto max-w-4xl space-y-8 text-center">
         <div className="inline-flex rounded-full border border-amber-500/40 bg-amber-500/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-amber-300">
-          Your Daily Creator Hub
+          Built for YouTube Creators
         </div>
         <h1 className="text-4xl font-semibold leading-tight text-slate-50 md:text-6xl">
-          Stop Hopping Between{' '}
-          <span className="text-amber-500">10 Different Tools.</span>
+          Your Morning Brief.{' '}
+          <span className="text-amber-500">90 Minutes of Research, Done Overnight.</span>
         </h1>
         <p className="mx-auto max-w-2xl text-base text-slate-300 md:text-lg leading-relaxed">
-          Octane Nexus is one place to discover what&apos;s trending, generate scripts with AI, 
-          manage your content pipeline, and schedule posts. Built for creators who are tired of 
-          tab-switching their way through every upload.
+          Octane Nexus watches your YouTube channel and your competitors while you sleep.
+          Every morning you get one screen: what blew up in your niche, what&apos;s working
+          in your own content, and one specific video idea ready to film.
         </p>
         <div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
           <Link
@@ -36,72 +36,77 @@ function HomePageContent() {
             Sign In
           </Link>
         </div>
-        <p className="text-xs text-slate-500">No credit card required. Free to explore.</p>
+        <p className="text-xs text-slate-500">Free tier includes daily briefs. No credit card required.</p>
       </section>
 
       {/* How It Works */}
       <section className="mx-auto w-full max-w-5xl space-y-10">
         <div className="text-center space-y-3">
           <h2 className="text-2xl font-semibold text-slate-50 md:text-3xl">
-            Your Daily Creator Loop
+            What Happens While You Sleep
           </h2>
           <p className="text-sm text-slate-400 md:text-base max-w-xl mx-auto">
-            Every day, the same workflow. Octane Nexus makes each step faster.
+            Connect YouTube once. Pick 3 competitors. Wake up to intelligence, not guesswork.
           </p>
         </div>
 
         <div className="grid gap-6 md:grid-cols-3">
           <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 space-y-4">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-red-500/20 text-red-400">
+              <Eye className="h-6 w-6" />
+            </div>
+            <h3 className="text-lg font-semibold text-slate-50">1. What Blew Up</h3>
+            <p className="text-sm text-slate-300 leading-relaxed">
+              We pull recent uploads from your tracked competitor channels, find the ones
+              outperforming their average, and break down the hook, format, and angle.
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 space-y-4">
             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-500/20 text-amber-400">
               <TrendingUp className="h-6 w-6" />
             </div>
-            <h3 className="text-lg font-semibold text-slate-50">1. Discover</h3>
+            <h3 className="text-lg font-semibold text-slate-50">2. Your Patterns</h3>
             <p className="text-sm text-slate-300 leading-relaxed">
-              See what&apos;s working right now. Trending hashtags, viral formats, and niche surveillance 
-              across TikTok, Instagram, and X — updated daily.
+              Your last 4 question-hook videos averaged 2.3x your normal views. We surface
+              patterns from your actual data that you&apos;d never spot scrolling YouTube Studio.
             </p>
           </div>
 
           <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 space-y-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-500/20 text-amber-400">
-              <Sparkles className="h-6 w-6" />
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-500/20 text-emerald-400">
+              <Zap className="h-6 w-6" />
             </div>
-            <h3 className="text-lg font-semibold text-slate-50">2. Create</h3>
+            <h3 className="text-lg font-semibold text-slate-50">3. Today&apos;s Idea</h3>
             <p className="text-sm text-slate-300 leading-relaxed">
-              Generate scripts, captions, and content ideas with AI that knows your brand voice. 
-              Send trending ideas straight to your production board.
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 space-y-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-500/20 text-amber-400">
-              <CalendarDays className="h-6 w-6" />
-            </div>
-            <h3 className="text-lg font-semibold text-slate-50">3. Ship</h3>
-            <p className="text-sm text-slate-300 leading-relaxed">
-              Move posts through your pipeline — from idea to script to ready. 
-              Schedule everything on one calendar. Track your streak.
+              Not 5 generic suggestions. ONE specific video idea with a hook, title,
+              3 thumbnail concepts, and an outline. Based on what&apos;s working right now.
             </p>
           </div>
         </div>
       </section>
 
-      {/* Features Grid */}
+      {/* Why Not ChatGPT */}
       <section className="mx-auto w-full max-w-5xl space-y-10">
         <div className="text-center space-y-3">
           <h2 className="text-2xl font-semibold text-slate-50 md:text-3xl">
-            Everything You Need. Nothing You Don&apos;t.
+            You Used to Screenshot Insights Into ChatGPT.
           </h2>
+          <p className="text-sm text-slate-400 md:text-base max-w-2xl mx-auto">
+            That worked until you stopped doing it. Octane Nexus is the version that shows up
+            every morning whether you remember or not. It watches your channel, remembers every
+            video you&apos;ve made, and gets sharper the longer you use it.
+          </p>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {[
-            { icon: TrendingUp, title: 'Niche Surveillance', desc: 'See what\'s going viral in your niche with view counts and breakdowns of why it worked.' },
-            { icon: MessageCircle, title: 'AI Content Advisor', desc: 'Chat with an AI that knows your brand and helps you brainstorm, write, and optimize.' },
-            { icon: LayoutGrid, title: 'Production Board', desc: 'Kanban-style pipeline. Move content from idea → scripting → filming → ready → posted.' },
-            { icon: CalendarDays, title: 'Content Calendar', desc: 'Visual schedule for all your posts. See your week at a glance.' },
-            { icon: UserCircle, title: 'Identity Builder', desc: 'AI-powered bios, handle checking, and brand asset generation across all platforms.' },
-            { icon: Zap, title: 'Posting Streaks', desc: 'Track consistency with daily streaks and XP. Gamified accountability that works.' },
+            { icon: Sunrise, title: 'Daily Brief', desc: 'Every morning: competitor intelligence, your performance patterns, and one ready-to-film video idea.' },
+            { icon: Brain, title: 'Creator Memory', desc: 'Every script, hook, and video you make stays in context. The AI learns YOUR voice, not generic advice.' },
+            { icon: Youtube, title: 'YouTube-Native', desc: 'Connects to your channel via OAuth. Imports your videos with real view counts, likes, and performance data.' },
+            { icon: Eye, title: 'Competitor Tracking', desc: 'Track up to 3 channels in your niche. See what they post, what performs, and why.' },
+            { icon: MessageCircle, title: 'Nexus Chat', desc: 'Ask "what hooks work for me?" and get answers grounded in your actual data, not vibes.' },
+            { icon: TrendingUp, title: 'Pattern Detection', desc: 'Surfaces what\'s actually working in YOUR content — formats, hooks, topics — backed by numbers.' },
           ].map((feature) => (
             <div key={feature.title} className="flex items-start gap-4 rounded-xl border border-slate-800 bg-slate-900/40 p-5">
               <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-amber-500/15 text-amber-400">
@@ -119,17 +124,17 @@ function HomePageContent() {
       {/* Final CTA */}
       <section className="mx-auto w-full max-w-3xl space-y-6 text-center">
         <h2 className="text-2xl font-semibold text-slate-50 md:text-3xl">
-          Your content deserves a real workflow.
+          Stop Deciding What to Film. Start Knowing.
         </h2>
         <p className="text-sm text-slate-400 md:text-base max-w-lg mx-auto">
-          Stop winging it. Build your creator identity, find what&apos;s trending, 
-          and ship content consistently — all from one dashboard.
+          The hardest part of YouTube isn&apos;t editing or writing. It&apos;s deciding what to make next.
+          Let Octane Nexus do that research for you, every single morning.
         </p>
         <Link
           href="/login?view=signup"
           className="inline-flex min-h-[56px] items-center justify-center gap-2 rounded-full border-2 border-amber-500 bg-amber-500 px-8 text-base font-semibold text-slate-950 shadow-lg transition-all hover:border-amber-400 hover:bg-amber-400 hover:shadow-xl hover:shadow-amber-500/60 hover:scale-[1.02]"
         >
-          Get Started — It&apos;s Free
+          Get Your First Brief — Free
           <ArrowRight className="h-5 w-5" />
         </Link>
       </section>
