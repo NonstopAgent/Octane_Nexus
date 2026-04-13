@@ -12,13 +12,14 @@ export const dynamic = 'force-dynamic';
  * Generates a CSRF state token, stores it in a cookie, and redirects
  * to Google's consent screen.
  */
-export async function GET() {
+export async function GET(req: Request) {
+  const origin = new URL(req.url).origin;
   try {
     const supabase = createServerSupabaseClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
       return NextResponse.redirect(
-        new URL('/login?returnTo=/dashboard/settings', process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000')
+        new URL('/login?returnTo=/dashboard/memory', origin)
       );
     }
 
@@ -47,9 +48,8 @@ export async function GET() {
     return NextResponse.redirect(consentUrl);
   } catch (err) {
     console.error('youtube/start error:', err);
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
     return NextResponse.redirect(
-      new URL('/dashboard/settings?youtube=error&reason=config', siteUrl)
+      new URL('/dashboard/memory?youtube=error&reason=config', origin)
     );
   }
 }

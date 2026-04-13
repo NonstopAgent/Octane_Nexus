@@ -16,8 +16,10 @@ export const dynamic = 'force-dynamic';
  * creator_connections via the service role client.
  */
 export async function GET(req: NextRequest) {
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
-  const settingsUrl = new URL('/dashboard/settings', siteUrl);
+  // Use the request's own origin — always correct in production, never falls
+  // back to localhost. NEXT_PUBLIC_SITE_URL was unreliable across environments.
+  const origin = new URL(req.url).origin;
+  const memoryUrl = new URL('/dashboard/memory', origin);
 
   try {
     const { searchParams } = new URL(req.url);
@@ -27,15 +29,15 @@ export async function GET(req: NextRequest) {
 
     // User denied consent or Google returned an error
     if (error) {
-      settingsUrl.searchParams.set('youtube', 'error');
-      settingsUrl.searchParams.set('reason', error);
-      return NextResponse.redirect(settingsUrl);
+      memoryUrl.searchParams.set('youtube', 'error');
+      memoryUrl.searchParams.set('reason', error);
+      return NextResponse.redirect(memoryUrl);
     }
 
     if (!code || !state) {
-      settingsUrl.searchParams.set('youtube', 'error');
-      settingsUrl.searchParams.set('reason', 'missing_params');
-      return NextResponse.redirect(settingsUrl);
+      memoryUrl.searchParams.set('youtube', 'error');
+      memoryUrl.searchParams.set('reason', 'missing_params');
+      return NextResponse.redirect(memoryUrl);
     }
 
     // Verify CSRF state against the cookie we set in /start
@@ -44,14 +46,14 @@ export async function GET(req: NextRequest) {
     const userId = cookieStore.get('youtube_oauth_user')?.value;
 
     if (!cookieState || cookieState !== state) {
-      settingsUrl.searchParams.set('youtube', 'error');
-      settingsUrl.searchParams.set('reason', 'state_mismatch');
-      return NextResponse.redirect(settingsUrl);
+      memoryUrl.searchParams.set('youtube', 'error');
+      memoryUrl.searchParams.set('reason', 'state_mismatch');
+      return NextResponse.redirect(memoryUrl);
     }
     if (!userId) {
-      settingsUrl.searchParams.set('youtube', 'error');
-      settingsUrl.searchParams.set('reason', 'no_user');
-      return NextResponse.redirect(settingsUrl);
+      memoryUrl.searchParams.set('youtube', 'error');
+      memoryUrl.searchParams.set('reason', 'no_user');
+      return NextResponse.redirect(memoryUrl);
     }
 
     // Exchange the auth code for access + refresh tokens
@@ -60,9 +62,9 @@ export async function GET(req: NextRequest) {
     // Fetch the user's YouTube channel so we have display data
     const channel = await fetchYouTubeChannel(tokens.access_token);
     if (!channel) {
-      settingsUrl.searchParams.set('youtube', 'error');
-      settingsUrl.searchParams.set('reason', 'no_channel');
-      return NextResponse.redirect(settingsUrl);
+      memoryUrl.searchParams.set('youtube', 'error');
+      memoryUrl.searchParams.set('reason', 'no_channel');
+      return NextResponse.redirect(memoryUrl);
     }
 
     // Store the connection via service role (tokens are sensitive — RLS-only writes)
@@ -89,25 +91,25 @@ export async function GET(req: NextRequest) {
 
     if (upsertError) {
       console.error('youtube/callback upsert error:', upsertError.message);
-      settingsUrl.searchParams.set('youtube', 'error');
-      settingsUrl.searchParams.set('reason', 'db_error');
-      return NextResponse.redirect(settingsUrl);
+      memoryUrl.searchParams.set('youtube', 'error');
+      memoryUrl.searchParams.set('reason', 'db_error');
+      return NextResponse.redirect(memoryUrl);
     }
 
     // Clear the CSRF cookies
     cookieStore.delete('youtube_oauth_state');
     cookieStore.delete('youtube_oauth_user');
 
-    // Redirect to settings with success flag
-    settingsUrl.searchParams.set('youtube', 'connected');
-    return NextResponse.redirect(settingsUrl);
+    // Redirect to memory page with success flag
+    memoryUrl.searchParams.set('youtube', 'connected');
+    return NextResponse.redirect(memoryUrl);
   } catch (err) {
     console.error('youtube/callback error:', err);
-    settingsUrl.searchParams.set('youtube', 'error');
-    settingsUrl.searchParams.set(
+    memoryUrl.searchParams.set('youtube', 'error');
+    memoryUrl.searchParams.set(
       'reason',
       err instanceof Error ? err.message.slice(0, 100) : 'unknown'
     );
-    return NextResponse.redirect(settingsUrl);
+    return NextResponse.redirect(memoryUrl);
   }
 }
