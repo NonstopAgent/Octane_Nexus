@@ -1,17 +1,17 @@
 /* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, prefer-const */
-// Manual API Key - Paste your key directly here to bypass .env issues
-const MANUAL_API_KEY = "AIzaSyCns6Z23t2MltuoqqAjcBggsziuIrTDLi0"; // PASTE YOUR KEY INSIDE THESE QUOTES
 
-// Helper function to get API key (prioritizes manual key)
+// Helper function to get API key from environment variables ONLY.
+// NEVER hardcode keys here — this file is committed to a public repo.
+// Set GEMINI_API_KEY in .env.local for local dev, and in Vercel for production.
 function getApiKey(): string | undefined {
-  return MANUAL_API_KEY || process.env.GEMINI_API_KEY;
+  return process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
 }
 
 // Verify GEMINI_API_KEY on module load
 if (typeof process !== 'undefined') {
   const apiKey = getApiKey();
   if (!apiKey) {
-    console.warn('⚠️ WARNING: GEMINI_API_KEY is not set in environment variables or MANUAL_API_KEY.');
+    console.warn('⚠️ WARNING: GEMINI_API_KEY is not set in environment variables.');
   }
 }
 
