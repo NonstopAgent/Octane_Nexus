@@ -2,7 +2,16 @@
 
 import { useState } from 'react';
 import { Zap, TrendingUp, Loader2, Award } from 'lucide-react';
-import { analyzeIdea, getTrendingTopic } from '@/lib/gemini';
+
+// Matches the shape returned by /api/analyze-idea (lib/gemini#analyzeIdea).
+// Duplicated here so this client component doesn't import lib/gemini,
+// which would drag the server-only GEMINI_API_KEY path into the browser bundle.
+type IdeaAnalysis = {
+  viralScore: number;
+  prediction: string;
+  tasks?: string[];
+  confidenceLevel?: string;
+};
 
 type IdeaAnalysisDisplay = {
   score: number;
@@ -28,13 +37,24 @@ export default function IdeaLab({ niche }: IdeaLabProps) {
     setAnalysis(null);
 
     try {
-      const result = await analyzeIdea(idea, niche);
-      const grade = result.viralScore >= 90 ? 'S' : result.viralScore >= 80 ? 'A' : result.viralScore >= 70 ? 'B' : 'C';
+      const res = await fetch('/api/analyze-idea', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idea, niche }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error((data as { error?: string }).error || 'Failed to analyze');
+      }
+      const result = data as IdeaAnalysis;
+      const score = typeof result.viralScore === 'number' ? result.viralScore : 0;
+      const grade = score >= 90 ? 'S' : score >= 80 ? 'A' : score >= 70 ? 'B' : 'C';
       setAnalysis({
-        score: result.viralScore,
+        score,
         grade,
-        feedback: result.prediction,
-        viral_tweak: result.tasks?.[0] ?? result.prediction,
+        feedback: result.prediction || '',
+        viral_tweak: result.tasks?.[0] ?? result.prediction ?? '',
       });
     } catch (error) {
       console.error('Failed to analyze idea:', error);
@@ -46,8 +66,18 @@ export default function IdeaLab({ niche }: IdeaLabProps) {
   async function handleInspire() {
     setLoadingTrend(true);
     try {
-      const trend = await getTrendingTopic(niche);
-      setIdea(trend);
+      const res = await fetch('/api/trending-topic', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ niche }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error((data as { error?: string }).error || 'Failed to get trend');
+      }
+      const topic = (data as { topic?: string }).topic || '';
+      if (topic) setIdea(topic);
     } catch (error) {
       console.error('Failed to get trending topic:', error);
     } finally {
