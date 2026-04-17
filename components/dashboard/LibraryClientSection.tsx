@@ -2,7 +2,23 @@
 
 import { useState } from 'react';
 import { Plus, Zap, Loader2, FileText, X, Copy, Check } from 'lucide-react';
-import { generateVideoConcepts, generateScript, type VideoConcept, type VideoScript } from '@/lib/gemini';
+
+// Local types (duplicated from lib/gemini so we can keep this component
+// on the client without pulling the server-only GEMINI_API_KEY into
+// the browser bundle).
+type VideoConcept = {
+  title?: string;
+  angle?: string;
+  hook?: string;
+  outline?: string;
+  visual?: string;
+};
+
+type VideoScript = {
+  hook?: string;
+  body?: string;
+  cta?: string;
+};
 
 type LibraryClientSectionProps = {
   userNiche: string;
@@ -21,7 +37,19 @@ export default function LibraryClientSection({ userNiche }: LibraryClientSection
     setBrainstorming(true);
     setBrainstormError(null);
     try {
-      const concepts = await generateVideoConcepts(userNiche);
+      const res = await fetch('/api/generate-ideas', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ niche: userNiche }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error((data as { error?: string }).error || 'Failed to generate ideas');
+      }
+      const concepts = Array.isArray((data as { concepts?: unknown }).concepts)
+        ? ((data as { concepts: VideoConcept[] }).concepts)
+        : [];
       setIdeas(concepts);
     } catch (error: unknown) {
       console.error('Failed to brainstorm ideas:', error);
@@ -36,15 +64,25 @@ export default function LibraryClientSection({ userNiche }: LibraryClientSection
     setScriptError(null);
     setSelectedScript(null);
     try {
-      const script = await generateScript(
-        idea.title ?? '',
-        idea.angle ?? idea.hook ?? '',
-        idea.outline ?? ''
-      );
+      const res = await fetch('/api/generate-script', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: idea.title ?? '',
+          angle: idea.angle ?? idea.hook ?? '',
+          visual: idea.outline ?? '',
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error((data as { error?: string }).error || 'Failed to generate script');
+      }
+      const script = (data as { script?: VideoScript }).script || {};
       setSelectedScript(script);
     } catch (error: unknown) {
       console.error('Failed to generate script:', error);
-      setScriptError('Failed to generate script');
+      setScriptError(error instanceof Error ? error.message : 'Failed to generate script');
     } finally {
       setLoadingScriptIndex(null);
     }

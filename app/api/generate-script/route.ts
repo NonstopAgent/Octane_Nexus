@@ -1,8 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
-import { generateVideoScript } from '@/lib/gemini';
+import { generateScript } from '@/lib/gemini';
 
+export const dynamic = 'force-dynamic';
+
+/**
+ * POST /api/generate-script
+ * Body: { title: string, angle?: string, visual?: string }
+ * Returns: { hook, body, cta }
+ *
+ * This wraps lib/gemini#generateScript so the GEMINI_API_KEY
+ * never needs to be exposed to the browser.
+ */
 export async function POST(req: NextRequest) {
   const supabase = createRouteHandlerClient({ cookies });
   const { data: { session } } = await supabase.auth.getSession();
@@ -11,15 +21,17 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const body = await req.json();
-    const { topic, userId } = body as { topic: string; userId?: string };
+    const body = await req.json().catch(() => ({}));
+    const title = typeof body?.title === 'string' ? body.title.trim() : '';
+    const angle = typeof body?.angle === 'string' ? body.angle.trim() : '';
+    const visual = typeof body?.visual === 'string' ? body.visual.trim() : '';
 
-    if (!topic?.trim()) {
-      return NextResponse.json({ error: 'topic is required' }, { status: 400 });
+    if (!title) {
+      return NextResponse.json({ error: 'title is required' }, { status: 400 });
     }
 
-    const variations = await generateVideoScript({ topic: topic.trim(), userId });
-    return NextResponse.json(variations);
+    const script = await generateScript(title, angle, visual);
+    return NextResponse.json({ script });
   } catch (error: unknown) {
     console.error('generate-script error:', error);
     const message = error instanceof Error ? error.message : 'Unknown error';

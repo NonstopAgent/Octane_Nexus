@@ -1,8 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
-import { generateVideoIdeas } from '@/lib/gemini';
+import { generateVideoConcepts } from '@/lib/gemini';
 
+export const dynamic = 'force-dynamic';
+
+/**
+ * POST /api/generate-ideas
+ * Body: { niche: string }
+ * Returns: VideoConcept[] — array of { title, angle, visual, ... }
+ *
+ * This wraps lib/gemini#generateVideoConcepts so the GEMINI_API_KEY
+ * never needs to be exposed to the browser.
+ */
 export async function POST(req: NextRequest) {
   const supabase = createRouteHandlerClient({ cookies });
   const { data: { session } } = await supabase.auth.getSession();
@@ -11,15 +21,14 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const body = await req.json();
-    const { niche, topic, userId } = body as { niche: string; topic?: string; userId?: string };
-
-    if (!niche?.trim()) {
+    const body = await req.json().catch(() => ({}));
+    const niche = typeof body?.niche === 'string' ? body.niche.trim() : '';
+    if (!niche) {
       return NextResponse.json({ error: 'niche is required' }, { status: 400 });
     }
 
-    const ideas = await generateVideoIdeas({ niche: niche.trim(), topic: topic?.trim(), userId });
-    return NextResponse.json(ideas);
+    const concepts = await generateVideoConcepts(niche);
+    return NextResponse.json({ concepts });
   } catch (error: unknown) {
     console.error('generate-ideas error:', error);
     const message = error instanceof Error ? error.message : 'Unknown error';
