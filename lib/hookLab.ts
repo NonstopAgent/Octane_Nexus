@@ -7,7 +7,7 @@ export type HookLine = {
 };
 
 function getGeminiKey(): string | undefined {
-  return process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+  return process.env.GEMINI_API_KEY;
 }
 
 /** Shared context block: top YouTube imports + competitor recent videos. */

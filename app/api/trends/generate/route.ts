@@ -22,7 +22,7 @@ export async function GET() {
     const vibe = profile?.vibe || '';
 
     // Use Gemini to generate niche-specific trending content
-    const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+    const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return NextResponse.json({ error: 'Gemini API key not configured' }, { status: 500 });
     }

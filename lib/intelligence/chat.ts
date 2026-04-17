@@ -116,9 +116,9 @@ export async function generateNexusResponse(input: NexusChatInput): Promise<stri
     userProfile: output.profile,
   });
 
-  const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    return 'Nexus is unavailable: no API key configured. Set GEMINI_API_KEY or NEXT_PUBLIC_GEMINI_API_KEY.';
+    return 'Nexus is unavailable: no API key configured. Set GEMINI_API_KEY in your environment.';
   }
 
   const genAI = new GoogleGenerativeAI(apiKey);
