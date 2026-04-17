@@ -1375,7 +1375,6 @@ export async function generateLogoConcepts(brandVision: string): Promise<LogoCon
   ];
 }
 
-// Placeholder for compatibility
 // --- Description Generation (YouTube Channel / X Pro Bio) ---
 
 export type DescriptionOption = {
@@ -1622,81 +1621,7 @@ export async function generateBannerConcepts(
   }
 }
 
-export async function generateBrandBrief(input: any): Promise<any> {
-    return { niche: 'General', vibe: 'Authentic', nameOptions: ['Brand1', 'Brand2'] };
-}
-
-export async function generateVideoIdeas(input: any): Promise<string[]> {
-    return ["Idea 1", "Idea 2", "Idea 3"]; 
-}
-export async function generateBios(input: any): Promise<string[]> {
-    return ["Bio 1", "Bio 2", "Bio 3"]; 
-}
-
-// --- Library Insight Function (Fixes Vercel Build Error) ---
-export async function generateLibrarianInsight(input: {
-  savedIdeas: string[];
-  userName?: string;
-}): Promise<string> {
-  const { savedIdeas, userName } = input;
-  const note = savedIdeas.length ? savedIdeas.join('\n') : 'No saved ideas yet.';
-  const apiKey = getApiKey();
-  if (!apiKey) {
-    return "Insight unavailable.";
-  }
-
-  try {
-    const { GoogleGenerativeAI } = await import('@google/generative-ai');
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
-    const namePart = userName ? ` for ${userName}` : '';
-    const prompt = `Analyze these saved ideas${namePart} and give 3 bullet points on how to monetize or connect them:\n\n${note}`;
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    return response.text();
-  } catch (error) {
-    console.error('Error generating librarian insight:', error);
-    return "Could not generate insight.";
-  }
-}
-
-// --- Platform-Specific Blueprints (Fixes Vercel Build Error) ---
-export async function generatePlatformSpecificBlueprints(input: {
-  idea: string;
-  userId?: string;
-}): Promise<PlatformSpecificBlueprints> {
-  const { idea } = input;
-  const apiKey = getApiKey();
-  const stub: PlatformSpecificBlueprints = {
-    tiktok: { hook: '', meat: [], cta: '', setup_tip: '' },
-    instagram: { hook: '', meat: [], cta: '', setup_tip: '' },
-    x: { hook: '', meat: [], cta: '', setup_tip: '' },
-  };
-  if (!apiKey) {
-    return stub;
-  }
-
-  try {
-    const { GoogleGenerativeAI } = await import('@google/generative-ai');
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
-    const prompt = `Create a viral LinkedIn post and a Twitter thread for this topic: ${idea}`;
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const text = response.text();
-    const hook = text.slice(0, 120) || 'Hook';
-    return {
-      tiktok: { hook, meat: [text], cta: 'Follow for more.', setup_tip: '' },
-      instagram: { hook, meat: [text], cta: 'Follow for more.', setup_tip: '' },
-      x: { hook, meat: [text], cta: 'Follow for more.', setup_tip: '' },
-    };
-  } catch (error) {
-    console.error('Error generating platform blueprints:', error);
-    return stub;
-  }
-}
-
-// --- Blueprint types (used by dashboard/library and lab) ---
+// --- Blueprint types (used by app/dashboard) ---
 export type VideoBlueprint = {
   hook: string;
   meat: string[];
@@ -1717,7 +1642,7 @@ export type PlatformSpecificBlueprints = {
   x: PlatformBlueprint;
 };
 
-// --- Stubs for API routes (TODO: replace with real implementation) ---
+// --- Nexus Chat ---
 
 export type NexusChatMessage = {
   role: 'user' | 'assistant';
@@ -1814,45 +1739,3 @@ Be direct, specific, and practical. Reference their niche AND their actual saved
   }
 }
 
-export type GenerateVideoScriptResult = {
-  variations: string[];
-};
-
-/**
- * TODO: Replace with real implementation. Generate video script variations from a topic.
- */
-export async function generateVideoScript(params: {
-  topic: string;
-  userId?: string;
-}): Promise<GenerateVideoScriptResult> {
-  return {
-    variations: [
-      `[Stub] Script for: ${params.topic}. Add real generateVideoScript implementation in lib/gemini.ts.`,
-    ],
-  };
-}
-
-export type AnalyzeVisualContentResult = {
-  summary?: string;
-  tags?: string[];
-  [key: string]: unknown;
-};
-
-/**
- * TODO: Replace with real implementation. Analyze image/video frame and return insights.
- */
-export async function analyzeVisualContent(
-  base64: string,
-  contentType: string,
-  platform: string,
-  vibe: string
-): Promise<AnalyzeVisualContentResult> {
-  void base64;
-  void contentType;
-  void platform;
-  void vibe;
-  return {
-    summary: 'Visual analysis not implemented yet. Add real analyzeVisualContent in lib/gemini.ts.',
-    tags: [],
-  };
-}
