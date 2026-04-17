@@ -4,7 +4,7 @@
 // NEVER hardcode keys here — this file is committed to a public repo.
 // Set GEMINI_API_KEY in .env.local for local dev, and in Vercel for production.
 function getApiKey(): string | undefined {
-  return process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+  return process.env.GEMINI_API_KEY;
 }
 
 // Verify GEMINI_API_KEY on module load
