@@ -2,7 +2,42 @@ import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabaseServer';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 30;
 
+type CachedVideo = {
+  id: string;
+  title: string;
+  viewCount: number;
+  publishedAt: string;
+  thumbnailUrl?: string;
+};
+
+type TrendingVideo = {
+  id: string;                // YouTube video id
+  title: string;
+  viewCount: string;         // formatted display string (e.g. "1.2M")
+  viewCountRaw: number;      // actual number for sorting
+  channelTitle: string;
+  channelHandle: string | null;
+  publishedAt: string;
+  thumbnailUrl: string | null;
+  youtubeUrl: string;        // real youtube link for click-through
+  whyItWorked: string;       // Gemini analysis; empty string if unavailable
+};
+
+function formatViews(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1).replace(/\.0$/, '')}K`;
+  return String(n);
+}
+
+/**
+ * GET /api/trends/generate
+ * Returns the user's top-performing competitor videos from tracked_channels,
+ * enriched with a one-sentence "why it worked" analysis from Gemini.
+ *
+ * If the user has no tracked channels yet, returns { videos: [], needsChannels: true }.
+ */
 export async function GET() {
   try {
     const supabase = createServerSupabaseClient();
@@ -11,64 +46,151 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get user's niche
+    // Niche for context/display
     const { data: profile } = await supabase
       .from('profiles')
       .select('niche, vibe')
       .eq('id', user.id)
       .maybeSingle();
-
     const niche = profile?.niche || 'content creation';
-    const vibe = profile?.vibe || '';
 
-    // Use Gemini to generate niche-specific trending content
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      return NextResponse.json({ error: 'Gemini API key not configured' }, { status: 500 });
+    // Pull tracked channels + their cached recent videos
+    const { data: channels, error: chanErr } = await supabase
+      .from('tracked_channels')
+      .select('channel_title, channel_handle, thumbnail_url, recent_videos')
+      .eq('user_id', user.id);
+
+    if (chanErr) {
+      console.error('trends/generate: tracked_channels query failed', chanErr);
+      return NextResponse.json({ error: 'Database error' }, { status: 500 });
     }
 
-    const prompt = `You are a social media trend analyst. Generate 6 realistic trending video/post ideas for the niche: "${niche}"${vibe ? ` with a ${vibe} style` : ''}.
+    if (!channels || channels.length === 0) {
+      return NextResponse.json({
+        videos: [],
+        niche,
+        needsChannels: true,
+      });
+    }
 
-For each idea, provide:
-- title: A compelling, viral-worthy title (the kind that gets clicks)
-- viewCount: A realistic view count string like "1.2M" or "450K"  
-- whyItWorked: A 1-2 sentence analysis of WHY this format/hook works algorithmically
-
-Make the titles feel like real viral content - use proven hooks like contrarian takes, specific numbers, POV formats, "I tried X for Y days" formats, listicles, etc.
-
-Respond ONLY with a JSON array, no markdown, no explanation:
-[{"id":"1","title":"...","viewCount":"...","whyItWorked":"..."},...]`;
-
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.9, maxOutputTokens: 1500 },
-        }),
+    // Flatten videos across channels
+    const all: TrendingVideo[] = [];
+    for (const ch of channels) {
+      const channelTitle = (ch.channel_title as string) || 'Unknown channel';
+      const channelHandle = (ch.channel_handle as string) || null;
+      const videos = Array.isArray(ch.recent_videos) ? (ch.recent_videos as CachedVideo[]) : [];
+      for (const v of videos) {
+        if (!v?.id || !v?.title) continue;
+        const viewCount = Number(v.viewCount) || 0;
+        all.push({
+          id: v.id,
+          title: v.title,
+          viewCount: formatViews(viewCount),
+          viewCountRaw: viewCount,
+          channelTitle,
+          channelHandle,
+          publishedAt: v.publishedAt || '',
+          thumbnailUrl: v.thumbnailUrl || null,
+          youtubeUrl: `https://www.youtube.com/watch?v=${v.id}`,
+          whyItWorked: '',
+        });
       }
-    );
-
-    if (!response.ok) {
-      console.error('Gemini API error:', response.status);
-      return NextResponse.json({ error: 'AI generation failed' }, { status: 500 });
     }
 
-    const data = await response.json();
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    const cleaned = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
-
-    try {
-      const videos = JSON.parse(cleaned);
-      return NextResponse.json({ videos, niche });
-    } catch {
-      console.error('Failed to parse Gemini response:', cleaned.substring(0, 200));
-      return NextResponse.json({ error: 'Failed to parse AI response' }, { status: 500 });
+    if (all.length === 0) {
+      return NextResponse.json({
+        videos: [],
+        niche,
+        needsChannels: false,
+        needsRefresh: true,
+      });
     }
+
+    // Sort by real view count, take top 8
+    all.sort((a, b) => b.viewCountRaw - a.viewCountRaw);
+    const top = all.slice(0, 8);
+
+    // Optional Gemini enrichment: one call for all titles → "why it worked" each
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (apiKey) {
+      try {
+        const enriched = await enrichWithAnalysis(apiKey, top, niche);
+        return NextResponse.json({ videos: enriched, niche, needsChannels: false });
+      } catch (err) {
+        console.warn('trends/generate: Gemini enrichment failed, returning raw data', err);
+      }
+    }
+
+    // Gemini unavailable or failed — return real video data without analysis
+    return NextResponse.json({ videos: top, niche, needsChannels: false });
   } catch (err) {
     console.error('trends/generate error:', err);
     return NextResponse.json({ error: 'Internal error' }, { status: 500 });
   }
+}
+
+/**
+ * Send the full list of titles in ONE Gemini call and parse back analyses.
+ * We ask for a JSON array indexed the same order as the input so we can match
+ * them back up without needing to parse per-video nuance.
+ */
+async function enrichWithAnalysis(
+  apiKey: string,
+  videos: TrendingVideo[],
+  niche: string
+): Promise<TrendingVideo[]> {
+  const titlesBlock = videos
+    .map(
+      (v, i) =>
+        `${i + 1}. [${v.channelTitle}] "${v.title}" — ${v.viewCount} views`
+    )
+    .join('\n');
+
+  const prompt = `You are a YouTube growth analyst. Below are real competitor videos in the niche "${niche}", sorted by view count. For EACH one, write ONE sentence (max 20 words) explaining the specific hook, format, or pattern that likely drove those views. Be tactical and specific — reference the actual title words. Avoid generic advice like "great hook" or "strong title".
+
+Videos:
+${titlesBlock}
+
+Respond with ONLY a JSON array of ${videos.length} strings, in the same order as the input. No markdown, no commentary.
+Example: ["Contrarian take on X reframes the default assumption", "Specific number anchors credibility ...", ...]`;
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0.6,
+          maxOutputTokens: 800,
+          responseMimeType: 'application/json',
+        },
+      }),
+    }
+  );
+
+  if (!res.ok) {
+    throw new Error(`Gemini returned ${res.status}`);
+  }
+
+  const data = await res.json();
+  const text: string = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  const cleaned = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+
+  let analyses: unknown;
+  try {
+    analyses = JSON.parse(cleaned);
+  } catch {
+    throw new Error('Gemini returned non-JSON');
+  }
+
+  if (!Array.isArray(analyses)) {
+    throw new Error('Gemini returned non-array');
+  }
+
+  return videos.map((v, i) => ({
+    ...v,
+    whyItWorked: typeof analyses[i] === 'string' ? (analyses[i] as string) : '',
+  }));
 }
