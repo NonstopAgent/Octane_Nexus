@@ -36,7 +36,7 @@ function HomePageContent() {
             Sign In
           </Link>
         </div>
-        <p className="text-xs text-slate-500">Free tier includes daily briefs. No credit card required.</p>
+        <p className="text-xs text-slate-500">Free during beta. No credit card required.</p>
       </section>
 
       {/* How It Works */}
