@@ -36,7 +36,7 @@ function HomePageContent() {
             Sign In
           </Link>
         </div>
-        <p className="text-xs text-slate-500">Free during beta. No credit card required.</p>
+        <p className="text-xs text-slate-500">Free during beta. No credit card required. <Link href="/how-it-works" className="text-amber-400/80 hover:text-amber-300 underline underline-offset-2">See what&apos;s in a brief</Link></p>
       </section>
 
       {/* How It Works */}
