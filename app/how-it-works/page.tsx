@@ -6,8 +6,6 @@ import {
   Eye,
   TrendingUp,
   Zap,
-  ExternalLink,
-  Youtube,
   Clock,
   Coffee,
   Sunrise,
@@ -90,17 +88,17 @@ const SAMPLE_IDEA = {
 
 export default function HowItWorksPage() {
   return (
-    <main className="mx-auto flex max-w-7xl flex-col gap-20 px-4 py-16 md:py-24">
+    <main className="mx-auto flex max-w-7xl flex-col gap-16 px-4 py-12 md:gap-24 md:px-6 md:py-24">
       {/* Hero */}
       <section className="mx-auto max-w-3xl space-y-6 text-center">
         <div className="inline-flex rounded-full border border-amber-500/40 bg-amber-500/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-amber-300">
-          How It Works
+          How it works
         </div>
-        <h1 className="text-4xl font-semibold leading-tight text-slate-50 md:text-5xl">
+        <h1 className="text-4xl font-semibold leading-[1.1] tracking-tight text-slate-50 md:text-5xl">
           Here&apos;s what you&apos;ll wake up to on{' '}
           <span className="text-amber-500">day 2.</span>
         </h1>
-        <p className="mx-auto max-w-2xl text-base text-slate-300 md:text-lg leading-relaxed">
+        <p className="mx-auto max-w-2xl text-base leading-relaxed text-slate-300 md:text-lg">
           No fluff. This is the actual shape of the brief our system generates every
           morning, filled in with a realistic example so you can decide if it&apos;s worth
           connecting your channel.
