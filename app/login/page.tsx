@@ -24,6 +24,47 @@ function LoginContent() {
   const [error, setError] = useState<string | null>(null);
   const [magicLinkSent, setMagicLinkSent] = useState(false);
   const [mode, setMode] = useState<'password' | 'magic'>('password');
+  const [googleLoading, setGoogleLoading] = useState(false);
+
+  // ==================== GOOGLE OAUTH (SUPABASE) ====================
+  async function handleGoogleSignIn() {
+    setError(null);
+    setGoogleLoading(true);
+    try {
+      // We deliberately do NOT request YouTube scopes here. Supabase Google
+      // sign-in only identifies the user. The separate YouTube OAuth flow
+      // at /api/auth/youtube/* handles the youtube.readonly consent when
+      // the user clicks "Connect YouTube" from the brief page. Bundling
+      // both consents into one screen is fragile and tends to break.
+      const redirectBase =
+        typeof window !== 'undefined' ? window.location.origin : '';
+      const redirectTo = `${redirectBase}/auth/callback?returnTo=${encodeURIComponent(
+        safeReturnTo === '/dashboard' ? '/identity' : safeReturnTo
+      )}`;
+
+      const { error: oauthError } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo,
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
+          },
+        },
+      });
+
+      if (oauthError) throw oauthError;
+      // Successful OAuth redirects the browser; no further state to set.
+    } catch (err: unknown) {
+      console.error('Google sign-in error:', err);
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Could not start Google sign-in. Try again?'
+      );
+      setGoogleLoading(false);
+    }
+  }
 
   // ==================== MOCK LOGIN (LOCALHOST ONLY) ====================
   async function handleMockLogin() {
@@ -156,6 +197,35 @@ function LoginContent() {
 
         {/* Login Form */}
         <div className="rounded-3xl border border-slate-800 bg-slate-900/80 p-6 shadow-xl md:p-8">
+          {/* Google OAuth (primary CTA) */}
+          <button
+            type="button"
+            onClick={handleGoogleSignIn}
+            disabled={googleLoading}
+            className="mb-5 w-full inline-flex min-h-[52px] items-center justify-center gap-3 rounded-2xl border border-slate-700 bg-slate-950 px-6 text-sm font-semibold text-slate-100 transition-all hover:border-slate-600 hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {googleLoading ? (
+              <>
+                <Loader2 className="h-5 w-5 animate-spin" />
+                Opening Google...
+              </>
+            ) : (
+              <>
+                <svg className="h-5 w-5" viewBox="0 0 24 24" aria-hidden="true">
+                  <path fill="#EA4335" d="M12 11v3.2h5.3c-.2 1.4-1.6 4.1-5.3 4.1-3.2 0-5.8-2.6-5.8-5.9S8.8 6.5 12 6.5c1.8 0 3 .8 3.7 1.4l2.5-2.4C16.7 4 14.6 3 12 3 6.9 3 2.8 7.1 2.8 12.2S6.9 21.4 12 21.4c6.9 0 9.2-4.8 9.2-7.4 0-.5 0-.9-.1-1.3H12z"/>
+                </svg>
+                {viewSignup ? 'Continue with Google' : 'Sign in with Google'}
+              </>
+            )}
+          </button>
+
+          {/* Divider */}
+          <div className="mb-5 flex items-center gap-3">
+            <div className="h-px flex-1 bg-slate-800" />
+            <span className="text-xs uppercase tracking-wide text-slate-500">or email</span>
+            <div className="h-px flex-1 bg-slate-800" />
+          </div>
+
           {/* Mode Toggle */}
           <div className="mb-6 flex gap-2 rounded-2xl border border-slate-800 bg-slate-950 p-1">
             <button
