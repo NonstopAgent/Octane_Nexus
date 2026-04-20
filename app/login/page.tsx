@@ -187,27 +187,29 @@ function LoginContent() {
               Octane Nexus
             </span>
           </div>
-          <h1 className="text-3xl font-semibold leading-tight text-slate-50 md:text-4xl">
-            {viewSignup ? 'Create your Account' : 'Welcome Back'}
+          <h1 className="text-3xl font-semibold leading-[1.1] tracking-tight text-slate-50 md:text-4xl">
+            {viewSignup ? 'Create your account' : 'Welcome back'}
           </h1>
           <p className="text-sm text-slate-300">
-            {viewSignup ? 'Get started with Octane Nexus and build your creator identity' : 'Sign in to access your creator command center'}
+            {viewSignup
+              ? 'Takes about 90 seconds. You\u2019ll connect YouTube right after.'
+              : 'Sign in to get to your morning brief.'}
           </p>
         </div>
 
         {/* Login Form */}
         <div className="rounded-3xl border border-slate-800 bg-slate-900/80 p-6 shadow-xl md:p-8">
-          {/* Google OAuth (primary CTA) */}
+          {/* Google OAuth — primary CTA, filled amber to pull the eye */}
           <button
             type="button"
             onClick={handleGoogleSignIn}
             disabled={googleLoading}
-            className="mb-5 w-full inline-flex min-h-[52px] items-center justify-center gap-3 rounded-2xl border border-slate-700 bg-slate-950 px-6 text-sm font-semibold text-slate-100 transition-all hover:border-slate-600 hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+            className="mb-5 w-full inline-flex min-h-[56px] items-center justify-center gap-3 rounded-full border-2 border-amber-500 bg-amber-500 px-6 text-base font-semibold text-slate-950 shadow-lg transition-all hover:border-amber-400 hover:bg-amber-400 hover:shadow-xl hover:shadow-amber-500/60 disabled:cursor-not-allowed disabled:border-amber-500/60 disabled:bg-amber-500/60"
           >
             {googleLoading ? (
               <>
                 <Loader2 className="h-5 w-5 animate-spin" />
-                Opening Google...
+                Opening Google…
               </>
             ) : (
               <>
@@ -270,7 +272,7 @@ function LoginContent() {
           {/* Success Message */}
           {magicLinkSent && (
             <div className="mb-4 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300">
-              Check your email! We sent you a magic link to sign in.
+              Check your email — we sent you a magic link.
             </div>
           )}
 
@@ -316,18 +318,15 @@ function LoginContent() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full inline-flex min-h-[60px] items-center justify-center gap-2 rounded-full border-2 border-amber-500 bg-amber-500 px-8 text-base font-semibold text-slate-950 shadow-lg transition-all hover:border-amber-400 hover:bg-amber-400 hover:shadow-xl hover:shadow-amber-500/60 hover:scale-[1.02] disabled:cursor-not-allowed disabled:border-amber-500/60 disabled:bg-amber-500/60 disabled:hover:scale-100"
+                className="w-full inline-flex min-h-[52px] items-center justify-center gap-2 rounded-full border border-slate-700 bg-slate-900 px-8 text-sm font-semibold text-slate-200 transition-all hover:border-amber-500/50 hover:bg-slate-800 hover:text-amber-400 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {loading ? (
                   <>
                     <Loader2 className="h-5 w-5 animate-spin" />
-                    {viewSignup ? 'Creating account...' : 'Signing in...'}
+                    {viewSignup ? 'Creating account…' : 'Signing in…'}
                   </>
                 ) : (
-                  <>
-                    <Zap className="h-5 w-5" />
-                    {viewSignup ? 'Create Account' : 'Sign In'}
-                  </>
+                  <>{viewSignup ? 'Create account' : 'Sign in'}</>
                 )}
               </button>
             </form>
@@ -357,19 +356,19 @@ function LoginContent() {
               <button
                 type="submit"
                 disabled={magicLinkLoading || magicLinkSent}
-                className="w-full inline-flex min-h-[60px] items-center justify-center gap-2 rounded-full border-2 border-amber-500 bg-amber-500 px-8 text-base font-semibold text-slate-950 shadow-lg transition-all hover:border-amber-400 hover:bg-amber-400 hover:shadow-xl hover:shadow-amber-500/60 hover:scale-[1.02] disabled:cursor-not-allowed disabled:border-amber-500/60 disabled:bg-amber-500/60 disabled:hover:scale-100"
+                className="w-full inline-flex min-h-[52px] items-center justify-center gap-2 rounded-full border border-slate-700 bg-slate-900 px-8 text-sm font-semibold text-slate-200 transition-all hover:border-amber-500/50 hover:bg-slate-800 hover:text-amber-400 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {magicLinkLoading ? (
                   <>
                     <Loader2 className="h-5 w-5 animate-spin" />
-                    Sending link...
+                    Sending link…
                   </>
                 ) : magicLinkSent ? (
-                  'Link Sent!'
+                  'Link sent'
                 ) : (
                   <>
-                    <Mail className="h-5 w-5" />
-                    Send Magic Link
+                    <Mail className="h-4 w-4" />
+                    Send magic link
                   </>
                 )}
               </button>
@@ -425,9 +424,9 @@ function LoginContent() {
               Already have an account?{' '}
               <Link
                 href="/login"
-                className="font-semibold text-amber-400 hover:text-amber-300 underline"
+                className="font-semibold text-amber-400 hover:text-amber-300 underline underline-offset-2"
               >
-                Sign In
+                Sign in
               </Link>
             </>
           ) : (
@@ -435,9 +434,9 @@ function LoginContent() {
               Don&apos;t have an account?{' '}
               <Link
                 href="/login?view=signup"
-                className="font-semibold text-amber-400 hover:text-amber-300 underline"
+                className="font-semibold text-amber-400 hover:text-amber-300 underline underline-offset-2"
               >
-                Get Started
+                Start free
               </Link>
             </>
           )}

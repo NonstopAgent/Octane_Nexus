@@ -77,14 +77,24 @@ export default function IdentityPage() {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-2xl flex-col justify-center gap-8 px-4 py-16">
-      <div className="space-y-3 text-center">
+    <main className="mx-auto flex min-h-screen max-w-2xl flex-col justify-center gap-8 px-4 py-12 md:py-16">
+      <div className="space-y-4 text-center">
+        {/* Progress dots — signed in ✓, niche →, brief next */}
+        <div className="flex items-center justify-center gap-1.5" aria-label="Step 2 of 3">
+          <span className="h-1.5 w-6 rounded-full bg-amber-500/60" />
+          <span className="h-1.5 w-6 rounded-full bg-amber-500" />
+          <span className="h-1.5 w-6 rounded-full bg-slate-700" />
+        </div>
         <div className="inline-flex items-center gap-2 rounded-full border border-amber-500/40 bg-amber-500/10 px-4 py-2">
           <Sparkles className="h-4 w-4 text-amber-400" />
-          <span className="text-xs font-semibold uppercase tracking-wide text-amber-300">Quick Setup</span>
+          <span className="text-xs font-semibold uppercase tracking-wide text-amber-300">Quick setup</span>
         </div>
-        <h1 className="text-3xl font-semibold text-slate-50 md:text-4xl">Tell us about your channel</h1>
-        <p className="text-sm text-slate-400">Two quick questions so your daily brief actually fits your channel. Takes 20 seconds.</p>
+        <h1 className="text-3xl font-semibold tracking-tight text-slate-50 md:text-4xl">
+          Tell us about your channel
+        </h1>
+        <p className="text-sm text-slate-400">
+          Two questions so your first brief actually fits. Takes 20 seconds.
+        </p>
       </div>
 
       <div className="space-y-8 rounded-2xl border border-slate-800 bg-slate-900/80 p-6 md:p-8">
@@ -126,18 +136,23 @@ export default function IdentityPage() {
         </div>
 
         {/* Submit */}
-        <button
-          type="button"
-          onClick={handleSubmit}
-          disabled={!niche.trim() || saving}
-          className="w-full inline-flex min-h-[56px] items-center justify-center gap-2 rounded-full border-2 border-amber-500 bg-amber-500 px-8 text-base font-semibold text-slate-950 shadow-lg transition-all hover:border-amber-400 hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {saving ? (
-            <><Loader2 className="h-5 w-5 animate-spin" /> Setting up...</>
-          ) : (
-            <>Go to My Brief <ArrowRight className="h-5 w-5" /></>
-          )}
-        </button>
+        <div className="space-y-3">
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={!niche.trim() || saving}
+            className="w-full inline-flex min-h-[56px] items-center justify-center gap-2 rounded-full border-2 border-amber-500 bg-amber-500 px-8 text-base font-semibold text-slate-950 shadow-lg transition-all hover:border-amber-400 hover:bg-amber-400 hover:shadow-xl hover:shadow-amber-500/60 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {saving ? (
+              <><Loader2 className="h-5 w-5 animate-spin" /> Setting up…</>
+            ) : (
+              <>Go to my brief <ArrowRight className="h-5 w-5" /></>
+            )}
+          </button>
+          <p className="text-center text-xs text-slate-500">
+            Next: connect YouTube and pick up to 3 competitors.
+          </p>
+        </div>
       </div>
     </main>
   );
