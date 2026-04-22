@@ -109,6 +109,21 @@ function LoginContent() {
   async function handlePasswordLogin(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+
+    // Client-side validation before hitting the API
+    if (!email.trim()) {
+      setError('Please enter your email address.');
+      return;
+    }
+    if (!password) {
+      setError('Please enter your password.');
+      return;
+    }
+    if (viewSignup && password.length < 8) {
+      setError('Password must be at least 8 characters.');
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -125,7 +140,9 @@ function LoginContent() {
 
         if (data.user) {
           // After successful signup, redirect to /identity for onboarding
-          router.push('/identity');
+          // but honour any explicit returnTo that isn't the generic /dashboard
+          const signupDest = (safeReturnTo && safeReturnTo !== '/dashboard') ? safeReturnTo : '/identity';
+          router.push(signupDest);
         }
       } else {
         // Sign In Flow
@@ -139,7 +156,8 @@ function LoginContent() {
         }
 
         if (data.user) {
-          router.push(safeReturnTo);
+          // Use the returnTo param if set, otherwise go to the brief
+          router.push(safeReturnTo !== '/dashboard' ? safeReturnTo : '/dashboard/brief');
         }
       }
     } catch (err: unknown) {
@@ -318,7 +336,7 @@ function LoginContent() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full inline-flex min-h-[52px] items-center justify-center gap-2 rounded-full border border-slate-700 bg-slate-900 px-8 text-sm font-semibold text-slate-200 transition-all hover:border-amber-500/50 hover:bg-slate-800 hover:text-amber-400 disabled:cursor-not-allowed disabled:opacity-60"
+                className="w-full inline-flex min-h-[52px] items-center justify-center gap-2 rounded-full border-2 border-amber-500 bg-amber-500 px-8 text-sm font-semibold text-slate-950 shadow-md transition-all hover:border-amber-400 hover:bg-amber-400 hover:shadow-lg hover:shadow-amber-500/50 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {loading ? (
                   <>
@@ -356,7 +374,7 @@ function LoginContent() {
               <button
                 type="submit"
                 disabled={magicLinkLoading || magicLinkSent}
-                className="w-full inline-flex min-h-[52px] items-center justify-center gap-2 rounded-full border border-slate-700 bg-slate-900 px-8 text-sm font-semibold text-slate-200 transition-all hover:border-amber-500/50 hover:bg-slate-800 hover:text-amber-400 disabled:cursor-not-allowed disabled:opacity-60"
+                className="w-full inline-flex min-h-[52px] items-center justify-center gap-2 rounded-full border-2 border-amber-500 bg-amber-500 px-8 text-sm font-semibold text-slate-950 shadow-md transition-all hover:border-amber-400 hover:bg-amber-400 hover:shadow-lg hover:shadow-amber-500/50 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {magicLinkLoading ? (
                   <>

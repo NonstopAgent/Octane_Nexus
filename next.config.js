@@ -3,6 +3,31 @@ const nextConfig = {
   experimental: {
     instrumentationHook: true,
   },
+  async redirects() {
+    return [
+      // Dead public routes → correct authenticated dashboard routes
+      {
+        source: '/nexus',
+        destination: '/dashboard/brief',
+        permanent: false,
+      },
+      {
+        source: '/trends',
+        destination: '/dashboard/trends',
+        permanent: false,
+      },
+      {
+        source: '/lab',
+        destination: '/dashboard/hook-lab',
+        permanent: false,
+      },
+      {
+        source: '/library',
+        destination: '/dashboard/library',
+        permanent: false,
+      },
+    ];
+  },
 };
 
 function getWithSentryConfig() {

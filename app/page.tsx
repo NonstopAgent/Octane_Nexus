@@ -184,6 +184,9 @@ function HomePageContent() {
             <Link href="/how-it-works" className="hover:text-amber-400">
               How it works
             </Link>
+            <Link href="/pricing" className="hover:text-amber-400">
+              Pricing
+            </Link>
             <Link href="/login" className="hover:text-amber-400">
               Sign in
             </Link>

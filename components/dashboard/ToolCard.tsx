@@ -19,7 +19,7 @@ type ToolCardProps = {
 
 export default function ToolCard({ tool }: ToolCardProps) {
   function handleClick() {
-    console.log('User interested in ' + tool.category);
+
   }
 
   const href = tool.url || '#';

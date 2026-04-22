@@ -20,7 +20,7 @@ export default function TacticsGrid({ niche = 'content creation' }: TacticsGridP
   }, [niche]);
 
   function handleUseFormat(tactic: ViralTactic) {
-    console.log('User selected format:', tactic.name);
+
     // Could open a modal or navigate to lab with this format pre-selected
     alert(`"${tactic.name}" format selected! Use this in your next video.`);
   }

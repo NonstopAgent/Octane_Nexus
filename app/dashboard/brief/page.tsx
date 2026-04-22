@@ -10,6 +10,9 @@ import {
   Trash2,
   Sparkles,
   ExternalLink,
+  TrendingUp,
+  Zap,
+  Flame,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import DashboardPageHeader from '@/components/dashboard/DashboardPageHeader';
@@ -31,17 +34,23 @@ type SearchChannel = {
   subscriberCount: number;
 };
 
+type CompetitorInsight = {
+  channel: string;
+  video_title: string;
+  video_id: string;
+  view_count: number;
+  why_it_worked: string;
+  hook_pattern: string;
+  // New outlier detection fields (may be absent on older briefs)
+  outlier_score?: number;
+  outlier_tier?: 'standard' | 'strong' | 'super';
+  baseline_views?: number;
+};
+
 type DailyBriefRow = {
   id: string;
   brief_date: string;
-  competitor_insights: Array<{
-    channel: string;
-    video_title: string;
-    video_id: string;
-    view_count: number;
-    why_it_worked: string;
-    hook_pattern: string;
-  }>;
+  competitor_insights: CompetitorInsight[];
   your_patterns: Array<{
     insight: string;
     evidence: string[];
@@ -57,6 +66,40 @@ type DailyBriefRow = {
   };
   generated_at: string;
 };
+
+/** Renders the outlier tier badge next to a competitor insight */
+function OutlierBadge({ tier, score }: { tier?: string; score?: number }) {
+  if (!tier || !score) return null;
+
+  const config = {
+    super: {
+      label: `${score.toFixed(1)}x · Super Outlier`,
+      icon: <Flame className="h-3 w-3" />,
+      className: 'border-rose-500/40 bg-rose-500/10 text-rose-400',
+    },
+    strong: {
+      label: `${score.toFixed(1)}x · Strong Outlier`,
+      icon: <Zap className="h-3 w-3" />,
+      className: 'border-amber-500/40 bg-amber-500/10 text-amber-400',
+    },
+    standard: {
+      label: `${score.toFixed(1)}x · Outlier`,
+      icon: <TrendingUp className="h-3 w-3" />,
+      className: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400',
+    },
+  }[tier] ?? null;
+
+  if (!config) return null;
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${config.className}`}
+    >
+      {config.icon}
+      {config.label}
+    </span>
+  );
+}
 
 export default function DailyBriefPage() {
   const [brief, setBrief] = useState<DailyBriefRow | null>(null);
@@ -188,6 +231,10 @@ export default function DailyBriefPage() {
   }
 
   async function generateBrief() {
+    if (channels.length === 0) {
+      toast.error('Add at least one competitor channel before generating a brief.');
+      return;
+    }
     setGenerating(true);
     try {
       const res = await fetch('/api/brief/generate', {
@@ -237,16 +284,18 @@ export default function DailyBriefPage() {
         }
       />
 
+      {/* Competitor channels section */}
       <section className="rounded-2xl border border-slate-800/80 bg-slate-900/40 p-5">
         <h2 className="text-lg font-semibold text-slate-100">Competitor channels</h2>
         <p className="mt-1 text-sm text-slate-400">
-          Track up to 3 channels. We cache recent uploads for your brief.{' '}
+          Track up to 3 channels. We cache recent uploads nightly and run outlier analysis on them.{' '}
           <Link href="/dashboard/memory" className="text-amber-400 hover:underline">
             Connect YouTube
           </Link>{' '}
           to import your own performance data.
         </p>
 
+        {/* Channel search */}
         <div className="relative mt-4">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
           <input
@@ -304,18 +353,26 @@ export default function DailyBriefPage() {
           </ul>
         )}
 
+        {/* Tracked channels list */}
         <div className="mt-4 space-y-2">
           {channelsLoading ? (
             <div className="flex items-center gap-2 text-sm text-slate-500">
               <Loader2 className="h-4 w-4 animate-spin" /> Loading…
             </div>
           ) : channels.length === 0 ? (
-            <p className="text-sm text-slate-500">No channels tracked yet. Search above to add.</p>
+            <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
+              <p className="text-sm font-medium text-amber-300">No channels tracked yet</p>
+              <p className="mt-1 text-xs text-slate-400">
+                Search above and add at least one competitor channel. The brief uses their recent
+                uploads to find what&apos;s outperforming their baseline — so you know what to
+                model.
+              </p>
+            </div>
           ) : (
             channels.map((ch) => (
               <div
                 key={ch.id}
-                className="flex items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2"
+                className="flex items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950/50 px-3 py-2.5"
               >
                 <div className="flex min-w-0 items-center gap-3">
                   {ch.thumbnail_url ? (
@@ -344,6 +401,7 @@ export default function DailyBriefPage() {
         </div>
       </section>
 
+      {/* Brief content section */}
       <section className="rounded-2xl border border-slate-800/80 bg-slate-900/40 p-5">
         <h2 className="text-lg font-semibold text-slate-100">Today&apos;s brief</h2>
         {briefLoading ? (
@@ -364,9 +422,9 @@ export default function DailyBriefPage() {
               <li>Click &quot;Generate today&apos;s brief&quot;.</li>
             </ol>
             {channels.length === 0 && (
-              <p className="text-amber-200/80">
-                Tip: add competitor channels and import your YouTube videos on the Memory page so the
-                brief has real data.
+              <p className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-amber-200/80">
+                Start by adding a competitor channel above — the brief needs at least one channel to
+                run outlier analysis against.
               </p>
             )}
           </div>
@@ -376,10 +434,15 @@ export default function DailyBriefPage() {
               Generated {new Date(brief.generated_at).toLocaleString()}
             </p>
 
+            {/* Competitor insights with outlier scores */}
             <div>
               <h3 className="text-sm font-semibold uppercase tracking-wide text-emerald-400/90">
                 What&apos;s working in your niche
               </h3>
+              <p className="mt-1 text-xs text-slate-500">
+                Videos that outperformed their channel&apos;s own baseline — not just popular
+                videos, but ones that broke out relative to what that channel normally gets.
+              </p>
               {brief.competitor_insights?.length ? (
                 <ul className="mt-3 space-y-4">
                   {brief.competitor_insights.map((item, i) => (
@@ -387,9 +450,18 @@ export default function DailyBriefPage() {
                       key={`${item.video_id}-${i}`}
                       className="rounded-xl border border-slate-800 bg-slate-950/50 p-4"
                     >
-                      <p className="font-medium text-slate-100">{item.video_title}</p>
-                      <p className="text-xs text-slate-500">
-                        {item.channel} · {item.view_count.toLocaleString()} views ·{' '}
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <p className="font-medium text-slate-100">{item.video_title}</p>
+                        <OutlierBadge tier={item.outlier_tier} score={item.outlier_score} />
+                      </div>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {item.channel} · {item.view_count.toLocaleString()} views
+                        {item.baseline_views ? (
+                          <span className="text-slate-600">
+                            {' '}(channel avg: {item.baseline_views.toLocaleString()})
+                          </span>
+                        ) : null}
+                        {' · '}
                         <span className="text-amber-400/90">{item.hook_pattern}</span>
                       </p>
                       <p className="mt-2 text-sm text-slate-300">{item.why_it_worked}</p>
@@ -409,6 +481,7 @@ export default function DailyBriefPage() {
               )}
             </div>
 
+            {/* Your patterns */}
             <div>
               <h3 className="text-sm font-semibold uppercase tracking-wide text-amber-400/90">
                 Your patterns
@@ -432,6 +505,7 @@ export default function DailyBriefPage() {
               </ul>
             </div>
 
+            {/* Today's idea */}
             <div className="rounded-2xl border border-amber-500/25 bg-amber-500/5 p-5">
               <h3 className="text-sm font-semibold uppercase tracking-wide text-amber-400">
                 Today&apos;s idea
@@ -444,13 +518,18 @@ export default function DailyBriefPage() {
               <p className="mt-3 text-sm text-slate-300">{brief.todays_idea?.outline}</p>
               <p className="mt-2 text-sm text-emerald-300/90">{brief.todays_idea?.why_now}</p>
               {(brief.todays_idea?.thumbnail_concepts || []).length > 0 && (
-                <ul className="mt-4 space-y-1 text-sm text-slate-400">
-                  {brief.todays_idea.thumbnail_concepts.map((t, i) => (
-                    <li key={i}>
-                      <span className="text-slate-600">{i + 1}.</span> {t}
-                    </li>
-                  ))}
-                </ul>
+                <div className="mt-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Thumbnail concepts
+                  </p>
+                  <ul className="mt-2 space-y-1 text-sm text-slate-400">
+                    {brief.todays_idea.thumbnail_concepts.map((t, i) => (
+                      <li key={i}>
+                        <span className="text-slate-600">{i + 1}.</span> {t}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               )}
             </div>
           </div>

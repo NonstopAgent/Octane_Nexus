@@ -66,6 +66,12 @@ export function NavigationHeader() {
                 How it works
               </Link>
               <Link
+                href="/pricing"
+                className="hidden items-center justify-center rounded-full px-3 py-2 text-sm font-medium text-slate-400 transition-colors hover:text-amber-400 md:inline-flex"
+              >
+                Pricing
+              </Link>
+              <Link
                 href="/login"
                 className="inline-flex items-center justify-center rounded-full border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-200 transition-all hover:border-amber-500/50 hover:bg-slate-800 hover:text-amber-400 md:px-4 md:py-2 md:text-sm"
               >
