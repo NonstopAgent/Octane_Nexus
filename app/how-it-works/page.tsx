@@ -5,7 +5,6 @@ import {
   ArrowRight,
   Eye,
   TrendingUp,
-  Zap,
   Clock,
   Coffee,
   Sunrise,
