@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { createServiceRoleClient } from '@/lib/supabaseServer';
 import { generateAndSaveBrief } from '@/lib/dailyBrief';
 import { fetchPublicChannelVideos } from '@/lib/youtubeOAuth';
+import { runFeedbackLoopForUser } from '@/lib/briefFeedback';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -60,6 +61,67 @@ async function refreshTrackedChannelsVideos(
 }
 
 /**
+ * Fetch the creator's own recent YouTube videos for the feedback loop.
+ * Uses their connected YouTube channel ID from the connections table.
+ * Returns empty array if no YouTube connection is found (non-fatal).
+ */
+async function fetchCreatorRecentVideos(
+  admin: SupabaseClient,
+  userId: string
+): Promise<Array<{ id: string; title: string; viewCount: number; publishedAt: string }>> {
+  try {
+    const { data: connection } = await admin
+      .from('connections')
+      .select('channel_id')
+      .eq('user_id', userId)
+      .eq('platform', 'youtube')
+      .maybeSingle();
+
+    if (!connection?.channel_id) return [];
+
+    const videos = await fetchPublicChannelVideos(connection.channel_id, 20);
+    return videos.map((v) => ({
+      id: v.id,
+      title: v.title,
+      viewCount: v.viewCount,
+      publishedAt: v.publishedAt,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Calculate the creator's median view count from their imported videos.
+ */
+async function getCreatorMedianViews(
+  admin: SupabaseClient,
+  userId: string
+): Promise<number> {
+  const { data: artifacts } = await admin
+    .from('creator_artifacts')
+    .select('performance')
+    .eq('user_id', userId)
+    .eq('source', 'imported_youtube')
+    .not('performance->views', 'is', null)
+    .limit(30);
+
+  if (!artifacts || artifacts.length < 3) return 0;
+
+  const views = artifacts
+    .map((a) => Number((a.performance as { views?: number })?.views) || 0)
+    .filter((v) => v > 0)
+    .sort((a, b) => a - b);
+
+  if (views.length === 0) return 0;
+
+  const mid = Math.floor(views.length / 2);
+  return views.length % 2 !== 0
+    ? views[mid]
+    : (views[mid - 1] + views[mid]) / 2;
+}
+
+/**
  * Vercel Cron: pre-generate daily briefs for users with YouTube imports or tracked channels.
  *
  * Security: set CRON_SECRET in Vercel project env. Vercel Cron sends
@@ -105,12 +167,37 @@ export async function GET(req: NextRequest) {
 
   let channelsRefreshed = 0;
   let channelRefreshFailed = 0;
+  let feedbackMatched = 0;
+  let feedbackIgnored = 0;
 
   for (const userId of userIds) {
+    // Step 1: Refresh competitor channel videos
     const { refreshed, failed } = await refreshTrackedChannelsVideos(admin, userId);
     channelsRefreshed += refreshed;
     channelRefreshFailed += failed;
 
+    // Step 2: Run the feedback loop BEFORE generating the new brief
+    // (so today's brief benefits from yesterday's feedback)
+    try {
+      const creatorVideos = await fetchCreatorRecentVideos(admin, userId);
+      const creatorMedian = await getCreatorMedianViews(admin, userId);
+
+      if (creatorVideos.length > 0) {
+        const feedbackResult = await runFeedbackLoopForUser(
+          admin,
+          userId,
+          creatorVideos,
+          creatorMedian
+        );
+        feedbackMatched += feedbackResult.matched;
+        feedbackIgnored += feedbackResult.ignored;
+      }
+    } catch (feedbackErr) {
+      // Non-fatal: feedback loop failure should not block brief generation
+      console.warn(`cron: feedback loop failed for user ${userId}`, feedbackErr);
+    }
+
+    // Step 3: Generate today's brief (now powered by updated memory)
     const result = await generateAndSaveBrief(admin, userId, today);
     if (result) generated += 1;
     else skipped += 1;
@@ -123,5 +210,7 @@ export async function GET(req: NextRequest) {
     skipped,
     channelsRefreshed,
     channelRefreshFailed,
+    feedbackMatched,
+    feedbackIgnored,
   });
 }

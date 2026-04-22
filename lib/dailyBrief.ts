@@ -1,26 +1,52 @@
 /**
- * Daily Brief Generator
- * =====================
- * The brain of the morning intelligence brief. Pulls together:
- *   1. The user's own recent video performance (from creator_artifacts)
- *   2. What their tracked competitor channels uploaded recently
- *   3. The user's niche and brand voice (from profiles)
- * Asks Gemini to synthesize all of that into three structured sections:
- *   - competitor_insights: what's blowing up in their niche
- *   - your_patterns: what's actually working in their own content
- *   - todays_idea: ONE specific video idea ready to film
+ * Daily Brief Generator — v2 (Intelligent Edition)
+ * ==================================================
+ * The brain of the morning intelligence brief. Now powered by three layers:
+ *
+ *   LAYER 1 — Outlier Detection (deterministic math)
+ *     Before the AI sees any competitor data, a statistical algorithm
+ *     calculates each video's outlier score (views / channel median).
+ *     Only videos performing 2.5x+ above their channel's baseline are
+ *     passed to Gemini. The AI is told the score and hook type — so it
+ *     acts as an analyst, not a guesser.
+ *
+ *   LAYER 2 — Persistent Creator Memory (brief profile)
+ *     Before generating, the system loads the creator's brief profile:
+ *     what hook types they respond to, what formats they ignore, what
+ *     ideas we've already suggested. This is injected into the prompt
+ *     so the AI never repeats itself and always personalizes to the
+ *     creator's actual behavior.
+ *
+ *   LAYER 3 — Implicit Feedback Loop (async, runs in cron)
+ *     After a brief is generated, the suggested idea is logged to
+ *     brief_suggestions. The feedback loop (briefFeedback.ts) later
+ *     checks if the creator filmed it and updates their profile.
+ *     The longer they use Octane Nexus, the smarter it gets for them.
  *
  * Designed to run from a cron job (overnight) or on-demand from the
  * /api/brief/generate route.
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import {
+  detectOutliers,
+  detectOwnOutliers,
+  formatOutliersForPrompt,
+  type RawCompetitorVideo,
+} from '@/lib/outlierDetection';
+import {
+  getCreatorBriefProfile,
+  buildBriefMemoryBlock,
+  logBriefSuggestion,
+  ensureBriefProfile,
+} from '@/lib/briefMemory';
 
 export type CompetitorInsight = {
   channel: string;
   video_title: string;
   video_id: string;
   view_count: number;
+  outlier_score?: number;
   why_it_worked: string;
   hook_pattern: string;
 };
@@ -141,7 +167,7 @@ export async function gatherUserContext(
       viewCount: number;
       publishedAt: string;
     }>) || [];
-    for (const v of videos.slice(0, 5)) {
+    for (const v of videos.slice(0, 10)) {
       competitorVideos.push({
         channel: channel.channel_title,
         title: v.title,
@@ -166,10 +192,44 @@ export async function gatherUserContext(
 }
 
 /**
- * Build the prompt for Gemini given the assembled context.
+ * Build the enhanced prompt for Gemini.
+ *
+ * Key upgrades vs. v1:
+ *   - Competitor section now shows ONLY outlier videos with their outlier
+ *     score and hook type (pre-calculated by the algorithm, not guessed by AI)
+ *   - Creator's own outliers are detected and highlighted separately
+ *   - Creator brief memory is injected (what works, what to avoid, past ideas)
+ *   - Rules explicitly tell the AI to use the outlier data and memory
  */
-function buildBriefPrompt(ctx: NonNullable<Awaited<ReturnType<typeof gatherUserContext>>>): string {
+function buildBriefPrompt(
+  ctx: NonNullable<Awaited<ReturnType<typeof gatherUserContext>>>,
+  memoryBlock: string
+): string {
   const { profile, topVideos, recentVideos, competitorVideos } = ctx;
+
+  // --- LAYER 1: Run outlier detection on competitor videos ---
+  const rawCompetitorVideos: RawCompetitorVideo[] = competitorVideos.map((v) => ({
+    id: v.video_id,
+    title: v.title,
+    viewCount: v.view_count,
+    publishedAt: v.published_at,
+    channel: v.channel,
+  }));
+
+  const outliers = detectOutliers(rawCompetitorVideos, 2.5, 30);
+  const outlierText = formatOutliersForPrompt(outliers);
+
+  // --- LAYER 1: Run outlier detection on creator's own videos ---
+  const allOwnVideos = [...topVideos, ...recentVideos].filter(
+    (v, i, arr) => arr.findIndex((x) => x.title === v.title) === i // deduplicate
+  );
+  const ownOutliers = detectOwnOutliers(allOwnVideos, 2.0);
+
+  const ownOutlierText = ownOutliers.length > 0
+    ? ownOutliers.slice(0, 3).map((v) =>
+        `  - "${v.title}" — ${v.views.toLocaleString()} views (${v.outlierScore.toFixed(1)}x their own avg, hook type: ${v.hookType})`
+      ).join('\n')
+    : null;
 
   const topVideosText = topVideos.length > 0
     ? topVideos.slice(0, 5).map((v, i) => `  ${i + 1}. "${v.title}" — ${v.views.toLocaleString()} views`).join('\n')
@@ -179,11 +239,9 @@ function buildBriefPrompt(ctx: NonNullable<Awaited<ReturnType<typeof gatherUserC
     ? recentVideos.slice(0, 5).map((v, i) => `  ${i + 1}. "${v.title}" — ${v.views.toLocaleString()} views`).join('\n')
     : '  (none yet)';
 
-  const competitorText = competitorVideos.length > 0
-    ? competitorVideos.slice(0, 15).map((v) =>
-        `  - [${v.channel}] "${v.title}" — ${v.view_count.toLocaleString()} views (id: ${v.video_id})`
-      ).join('\n')
-    : '  (no tracked channels yet)';
+  // Build the outlier count summary for the rules section
+  const outlierCount = outliers.length;
+  const superOutlierCount = outliers.filter((o) => o.outlierTier === 'super').length;
 
   return `You are generating a Daily Brief for a YouTube creator. Output ONLY valid JSON, no markdown fences, no commentary.
 
@@ -192,14 +250,17 @@ CREATOR CONTEXT:
 ${profile.vibe ? `- Voice/Style: ${profile.vibe}` : ''}
 ${profile.brand_vision ? `- Brand vision: ${profile.brand_vision}` : ''}
 
-THEIR TOP-PERFORMING VIDEOS:
+${memoryBlock ? memoryBlock + '\n' : ''}
+THEIR TOP-PERFORMING VIDEOS (all time):
 ${topVideosText}
 
 THEIR MOST RECENT VIDEOS:
 ${recentVideosText}
 
-WHAT THEIR TRACKED COMPETITOR CHANNELS PUBLISHED RECENTLY:
-${competitorText}
+${ownOutlierText ? `THEIR OWN OUTLIER VIDEOS (performing 2x+ above their average — these formats WORK for them):\n${ownOutlierText}\n` : ''}
+COMPETITOR OUTLIER VIDEOS (mathematically proven to be outperforming their channel's baseline):
+Note: ${outlierCount} outlier(s) detected. ${superOutlierCount > 0 ? `${superOutlierCount} are SUPER outliers (10x+ their channel avg).` : ''} These are NOT just popular videos — they are specifically over-performing relative to each channel's own average.
+${outlierText}
 
 TASK: Generate a personalized morning brief with three sections. Be specific and reference actual data. NEVER give generic advice.
 
@@ -211,7 +272,8 @@ Output exactly this JSON structure (no other keys, no markdown, no preamble):
       "video_title": "exact title",
       "video_id": "the id from the data above",
       "view_count": 123456,
-      "why_it_worked": "1-2 sentence specific analysis of the hook/format/angle that drove views",
+      "outlier_score": 3.2,
+      "why_it_worked": "1-2 sentence specific analysis of the hook/format/angle that drove views — reference the hook_type from the data",
       "hook_pattern": "the underlying pattern in 3-6 words like 'contrarian time-promise' or 'POV reaction'"
     }
   ],
@@ -232,16 +294,17 @@ Output exactly this JSON structure (no other keys, no markdown, no preamble):
     ],
     "outline": "3-5 sentence structure of the video: what they cover, in order",
     "format": "e.g. talking head, list, tutorial, reaction, story",
-    "why_now": "1 sentence explaining why THIS idea TODAY based on the data above"
+    "why_now": "1 sentence explaining why THIS idea TODAY based on the outlier data above"
   }
 }
 
 RULES:
-- competitor_insights: pick the 3 most relevant videos. If competitor data is empty, return [].
-- your_patterns: 2-3 patterns from THEIR actual videos. If they have no videos yet, return [{"insight": "Connect YouTube and import your videos to unlock pattern detection", "evidence": [], "confidence": "low"}].
-- todays_idea: ONE idea, not multiple. Ground it in either a competitor pattern that's working OR a pattern from their own content. Tell them why it'll work.
+- competitor_insights: ONLY use videos from the COMPETITOR OUTLIER VIDEOS section above. These are mathematically proven outliers. Pick the top 3 by outlier_score. If no outliers detected, return [].
+- your_patterns: 2-3 patterns from THEIR actual videos. If they have own outliers, reference those specifically. If they have no videos yet, return [{"insight": "Connect YouTube and import your videos to unlock pattern detection", "evidence": [], "confidence": "low"}].
+- todays_idea: ONE idea. Ground it in a specific outlier hook_type that's working in their niche. If they have own outliers, adapt the format that worked for them. If creator memory says they ignore certain formats, do NOT suggest those formats.
 - Match their voice/style if provided.
-- The hook must be a real opening line, not a description of one.`;
+- The hook must be a real opening line, not a description of one.
+- Do NOT suggest any idea title that appears in the creator memory's "already suggested" list.`;
 }
 
 function getGeminiKey(): string | undefined {
@@ -253,7 +316,8 @@ function getGeminiKey(): string | undefined {
  * Returns the parsed brief, or null on failure.
  */
 export async function generateBrief(
-  ctx: NonNullable<Awaited<ReturnType<typeof gatherUserContext>>>
+  ctx: NonNullable<Awaited<ReturnType<typeof gatherUserContext>>>,
+  memoryBlock: string
 ): Promise<{ brief: DailyBrief; model: string; ms: number } | null> {
   const apiKey = getGeminiKey();
   if (!apiKey) {
@@ -262,7 +326,7 @@ export async function generateBrief(
   }
 
   const model = 'gemini-2.5-flash';
-  const prompt = buildBriefPrompt(ctx);
+  const prompt = buildBriefPrompt(ctx, memoryBlock);
   const start = Date.now();
 
   try {
@@ -328,6 +392,10 @@ export async function generateBrief(
 
 /**
  * Top-level orchestration: gather context, generate brief, save to DB.
+ * Now also:
+ *   - Loads creator brief memory (Layer 2) before generation
+ *   - Logs the suggested idea after generation (Layer 3 setup)
+ *
  * Used by both the cron job and the on-demand /api/brief/generate route.
  * Returns the saved brief id, or null if anything failed/skipped.
  */
@@ -342,7 +410,12 @@ export async function generateAndSaveBrief(
     return null;
   }
 
-  const result = await generateBrief(ctx);
+  // --- LAYER 2: Load creator brief memory ---
+  await ensureBriefProfile(admin, userId);
+  const briefProfile = await getCreatorBriefProfile(admin, userId);
+  const memoryBlock = buildBriefMemoryBlock(briefProfile);
+
+  const result = await generateBrief(ctx, memoryBlock);
   if (!result) {
     console.error(`generateAndSaveBrief: generation failed for user ${userId}`);
     return null;
@@ -369,6 +442,40 @@ export async function generateAndSaveBrief(
   if (error || !data) {
     console.error(`generateAndSaveBrief: db upsert failed`, error?.message);
     return null;
+  }
+
+  // --- LAYER 3: Log the suggestion for the feedback loop ---
+  const idea = result.brief.todays_idea;
+  if (idea.title) {
+    // Find the top outlier that inspired this idea (if any) for source tracking
+    const rawCompetitorVideos: RawCompetitorVideo[] = ctx.competitorVideos.map((v) => ({
+      id: v.video_id,
+      title: v.title,
+      viewCount: v.view_count,
+      publishedAt: v.published_at,
+      channel: v.channel,
+    }));
+    const outliers = detectOutliers(rawCompetitorVideos, 2.5, 30);
+    const topOutlier = outliers[0]; // The highest-scoring outlier that likely inspired the idea
+
+    await logBriefSuggestion(
+      admin,
+      userId,
+      data.id,
+      briefDate,
+      {
+        title: idea.title,
+        hook: idea.hook,
+        format: idea.format,
+      },
+      topOutlier
+        ? {
+            hookType: topOutlier.hookType,
+            sourceChannel: topOutlier.channel,
+            sourceVideoId: topOutlier.id,
+          }
+        : undefined
+    );
   }
 
   return { id: data.id, brief: result.brief };
