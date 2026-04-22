@@ -261,7 +261,7 @@ export async function generateBrief(
     return null;
   }
 
-  const model = 'gemini-2.0-flash';
+  const model = 'gemini-2.5-flash';
   const prompt = buildBriefPrompt(ctx);
   const start = Date.now();
 

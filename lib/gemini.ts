@@ -111,7 +111,7 @@ async function getUserContentHistory(userId?: string): Promise<string | null> {
 async function callGeminiAPI(
   apiKey: string,
   requestBody: any,
-  model: string = 'gemini-1.5-flash'
+  model: string = 'gemini-2.5-flash'
 ): Promise<{ ok: boolean; data: any; error: string | null } | null> {
   try {
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
@@ -293,7 +293,7 @@ Return strictly valid JSON:
           ],
   };
 
-  const result = await callGeminiAPI(apiKey, requestBody, 'gemini-1.5-flash');
+  const result = await callGeminiAPI(apiKey, requestBody, 'gemini-2.5-flash');
 
   // Safety net: If API fails, return mock data
   if (!result || !result.ok) {
@@ -390,7 +390,7 @@ export async function generateSocialCaption(
   }
 
   // Always use Flash model for better image handling and faster responses
-  const model = 'gemini-1.5-flash';
+  const model = 'gemini-2.5-flash';
 
   const result = await callGeminiAPI(apiKey, requestBody, model);
 
@@ -603,7 +603,7 @@ export async function generateVideoConcepts(niche: string): Promise<any[]> {
       }]
     };
 
-    const result = await callGeminiAPI(apiKey, requestBody, 'gemini-1.5-flash');
+    const result = await callGeminiAPI(apiKey, requestBody, 'gemini-2.5-flash');
 
     // Safety net: If API fails, return mock data
     if (!result || !result.ok) {
@@ -668,7 +668,7 @@ export async function generateVisionHandles(input: { vision: string }): Promise<
     contents: [{ parts: [{ text: `Generate 5 catchy, brandable social media handles for: "${input.vision}". Return comma-separated list. No numbers unless clever.` }] }]
   };
 
-  const result = await callGeminiAPI(apiKey, requestBody, 'gemini-1.5-flash');
+  const result = await callGeminiAPI(apiKey, requestBody, 'gemini-2.5-flash');
   
   // Safety net: If API fails, return mock data
   if (!result || !result.ok) {
@@ -709,7 +709,7 @@ export async function generateScript(title: string, angle: string, visual: strin
       contents: [{ parts: [{ text: `Write a script for "${title}". Angle: ${angle}. Visual: ${visual}. Return JSON: {hook, body, cta}.` }] }]
     };
 
-    const result = await callGeminiAPI(apiKey, requestBody, 'gemini-1.5-flash');
+    const result = await callGeminiAPI(apiKey, requestBody, 'gemini-2.5-flash');
     
     // Safety net: If API fails, return mock data
     if (!result || !result.ok) {
@@ -794,7 +794,7 @@ export async function generateTopCreators(niche: string): Promise<TopCreator[]> 
     }]
   };
 
-  const result = await callGeminiAPI(apiKey, requestBody, 'gemini-1.5-flash');
+  const result = await callGeminiAPI(apiKey, requestBody, 'gemini-2.5-flash');
 
   // Safety net: If API fails, return mock data
   if (!result || !result.ok) {
@@ -878,7 +878,7 @@ export async function generateToolRecommendations(niche: string): Promise<ToolRe
     }]
   };
 
-  const result = await callGeminiAPI(apiKey, requestBody, 'gemini-1.5-flash');
+  const result = await callGeminiAPI(apiKey, requestBody, 'gemini-2.5-flash');
 
   // Safety net: If API fails, return mock data
   if (!result || !result.ok) {
@@ -972,7 +972,7 @@ export async function generateVideoInspiration(niche: string): Promise<VideoInsp
     }]
   };
 
-  const result = await callGeminiAPI(apiKey, requestBody, 'gemini-1.5-flash');
+  const result = await callGeminiAPI(apiKey, requestBody, 'gemini-2.5-flash');
 
   // Safety net: If API fails, return mock data
   if (!result || !result.ok) {
@@ -1213,7 +1213,7 @@ Do NOT return markdown, prose, or commentary. JSON only.`
     }]
   };
 
-  const result = await callGeminiAPI(apiKey, requestBody, 'gemini-1.5-flash');
+  const result = await callGeminiAPI(apiKey, requestBody, 'gemini-2.5-flash');
 
   // Safety net: If API fails, return mock data
   if (!result || !result.ok) {
@@ -1310,7 +1310,7 @@ export async function getTrendingTopic(niche: string): Promise<string> {
     }]
   };
 
-  const result = await callGeminiAPI(apiKey, requestBody, 'gemini-1.5-flash');
+  const result = await callGeminiAPI(apiKey, requestBody, 'gemini-2.5-flash');
 
   // Safety net: If API fails, return mock data
   if (!result || !result.ok) {
@@ -1481,7 +1481,7 @@ export async function generateDescriptionOptions(
     }]
   };
 
-  const result = await callGeminiAPI(apiKey, requestBody, 'gemini-1.5-flash');
+  const result = await callGeminiAPI(apiKey, requestBody, 'gemini-2.5-flash');
 
   // Safety net: If API fails, return mock data
   if (!result || !result.ok) {
@@ -1596,7 +1596,7 @@ export async function generateBannerConcepts(
     }]
   };
 
-  const result = await callGeminiAPI(apiKey, requestBody, 'gemini-1.5-flash');
+  const result = await callGeminiAPI(apiKey, requestBody, 'gemini-2.5-flash');
 
   // Safety net: If API fails, return mock data
   if (!result || !result.ok) {
@@ -1713,7 +1713,7 @@ Be direct, specific, and practical. Reference their niche AND their actual saved
     }));
 
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
