@@ -109,8 +109,13 @@ export default function DailyBriefPage() {
   const [query, setQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchChannel[]>([]);
   const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
   const [addingId, setAddingId] = useState<string | null>(null);
+  // Connection status — used to render accurate guidance instead of generic
+  // "Connect YouTube" instructions even when the user is already connected.
+  const [youtubeConnected, setYoutubeConnected] = useState<boolean | null>(null);
+  const [hasImportedVideos, setHasImportedVideos] = useState<boolean>(false);
 
   const loadBrief = useCallback(async () => {
     setBriefLoading(true);
@@ -146,15 +151,35 @@ export default function DailyBriefPage() {
     }
   }, []);
 
+  const loadConnectionStatus = useCallback(async () => {
+    try {
+      const res = await fetch('/api/connections', { credentials: 'include' });
+      if (!res.ok) {
+        setYoutubeConnected(false);
+        return;
+      }
+      const data = (await res.json()) as {
+        connections?: Array<{ provider: string; last_synced_at: string | null }>;
+      };
+      const yt = (data.connections || []).find((c) => c.provider === 'youtube');
+      setYoutubeConnected(!!yt);
+      setHasImportedVideos(!!yt?.last_synced_at);
+    } catch {
+      setYoutubeConnected(false);
+    }
+  }, []);
+
   useEffect(() => {
     loadBrief();
     loadChannels();
-  }, [loadBrief, loadChannels]);
+    loadConnectionStatus();
+  }, [loadBrief, loadChannels, loadConnectionStatus]);
 
   useEffect(() => {
     const q = query.trim();
     if (q.length < 2) {
       setSearchResults([]);
+      setSearchError(null);
       return;
     }
     const t = setTimeout(async () => {
@@ -167,15 +192,31 @@ export default function DailyBriefPage() {
         if (res.ok) {
           const data = await res.json();
           setSearchResults(data.channels || []);
+          setSearchError(null);
         } else {
           setSearchResults([]);
           if (res.status !== 401) {
             const err = await res.json().catch(() => ({}));
-            toast.error((err as { error?: string }).error || 'Search failed');
+            const msg = (err as { error?: string }).error || 'Search failed';
+            // API key expired or other infra failure — keep the banner visible
+            // so the user understands why nothing is loading, not just a toast
+            // that disappears in 3 seconds.
+            if (
+              msg.toLowerCase().includes('api key') ||
+              msg.toLowerCase().includes('expired') ||
+              res.status >= 500
+            ) {
+              setSearchError(
+                'Channel search is temporarily unavailable. The site owner has been notified. (You can still view a brief once one is generated.)'
+              );
+            } else {
+              setSearchError(msg);
+            }
           }
         }
       } catch {
         setSearchResults([]);
+        setSearchError('Channel search is temporarily unavailable.');
       } finally {
         setSearching(false);
       }
@@ -289,10 +330,16 @@ export default function DailyBriefPage() {
         <h2 className="text-lg font-semibold text-slate-100">Competitor channels</h2>
         <p className="mt-1 text-sm text-slate-400">
           Track up to 3 channels. We cache recent uploads nightly and run outlier analysis on them.{' '}
-          <Link href="/dashboard/memory" className="text-amber-400 hover:underline">
-            Connect YouTube
-          </Link>{' '}
-          to import your own performance data.
+          {youtubeConnected ? (
+            <span className="text-emerald-400">Your YouTube is connected ✓</span>
+          ) : (
+            <>
+              <Link href="/dashboard/memory" className="text-amber-400 hover:underline">
+                Connect YouTube
+              </Link>{' '}
+              to import your own performance data.
+            </>
+          )}
         </p>
 
         {/* Channel search */}
@@ -309,6 +356,13 @@ export default function DailyBriefPage() {
             <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-slate-500" />
           )}
         </div>
+
+        {searchError && (
+          <div className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3">
+            <p className="text-sm font-medium text-rose-300">Channel search is down</p>
+            <p className="mt-1 text-xs text-rose-200/80">{searchError}</p>
+          </div>
+        )}
 
         {searchResults.length > 0 && (
           <ul className="mt-3 space-y-2 rounded-xl border border-slate-800 bg-slate-950/80 p-2">
@@ -413,12 +467,40 @@ export default function DailyBriefPage() {
             <p>No brief for today yet.</p>
             <ol className="list-decimal space-y-1 pl-5">
               <li>
-                <Link href="/dashboard/memory" className="text-amber-400 hover:underline">
-                  Connect YouTube
-                </Link>{' '}
-                and import your videos (for your performance patterns).
+                {youtubeConnected ? (
+                  <span className="text-emerald-400">YouTube connected ✓</span>
+                ) : (
+                  <Link href="/dashboard/memory" className="text-amber-400 hover:underline">
+                    Connect YouTube
+                  </Link>
+                )}{' '}
+                {hasImportedVideos ? (
+                  <span className="text-slate-500">— videos imported ✓</span>
+                ) : (
+                  <>
+                    {youtubeConnected ? (
+                      <>
+                        — now{' '}
+                        <Link href="/dashboard/memory" className="text-amber-400 hover:underline">
+                          sync your videos
+                        </Link>{' '}
+                        to enable your performance patterns.
+                      </>
+                    ) : (
+                      <>and import your videos (for your performance patterns).</>
+                    )}
+                  </>
+                )}
               </li>
-              <li>Add at least one competitor channel above (for niche signals).</li>
+              <li>
+                {channels.length > 0 ? (
+                  <span className="text-emerald-400">
+                    Tracking {channels.length} competitor channel{channels.length === 1 ? '' : 's'} ✓
+                  </span>
+                ) : (
+                  <>Add at least one competitor channel above (for niche signals).</>
+                )}
+              </li>
               <li>Click &quot;Generate today&apos;s brief&quot;.</li>
             </ol>
             {channels.length === 0 && (

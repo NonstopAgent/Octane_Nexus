@@ -7,6 +7,7 @@ import { NavigationHeader } from '@/components/NavigationHeader';
 import { SystemStatusBanner } from '@/components/SystemStatusBanner';
 import { SupabaseSessionProvider } from '@/components/SupabaseSessionProvider';
 import { PostHogProvider } from '@/components/PostHogProvider';
+import { Toaster } from '@/components/Toaster';
 
 const SITE_URL = 'https://octane-nexus-6em9.vercel.app';
 const SITE_NAME = 'Octane Nexus';
@@ -61,6 +62,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               <Suspense fallback={null}>
                 <ActiveLibrarian />
               </Suspense>
+              <Toaster />
             </div>
           </SupabaseSessionProvider>
         </PostHogProvider>
