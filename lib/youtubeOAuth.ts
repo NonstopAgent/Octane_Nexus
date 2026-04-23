@@ -216,12 +216,81 @@ export async function fetchYouTubeVideos(
 
 // ============================================================
 // PUBLIC CHANNEL HELPERS
-// These use the server-side YOUTUBE_API_KEY (not OAuth) to read
-// public channel data. Used for tracked competitor channels.
+// These can use EITHER an OAuth Bearer token (from any signed-in
+// user) OR the server-side YOUTUBE_API_KEY. OAuth is preferred
+// because it doesn't depend on a separately-managed API key that
+// can silently expire.
 // ============================================================
 
 function getPublicApiKey(): string | undefined {
   return process.env.YOUTUBE_API_KEY;
+}
+
+/**
+ * Build auth params for a YouTube Data API request.
+ * If an OAuth access token is provided, uses Bearer auth.
+ * Otherwise falls back to the server's ?key=API_KEY query param.
+ */
+function ytAuth(accessToken?: string): {
+  headers: Record<string, string>;
+  keyParam: string;
+} {
+  if (accessToken) {
+    return {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      keyParam: '',
+    };
+  }
+  const key = getPublicApiKey();
+  if (!key) throw new Error('YOUTUBE_API_KEY not set and no OAuth token provided');
+  return {
+    headers: {},
+    keyParam: `&key=${key}`,
+  };
+}
+
+/**
+ * Fetch a valid YouTube OAuth access token for a given user.
+ * Refreshes the token if it's expired (or near-expired), persists
+ * the new token to creator_connections, and returns it.
+ * Returns null if the user has no YouTube connection.
+ */
+export async function getValidYouTubeAccessToken(
+  admin: SupabaseClient,
+  userId: string
+): Promise<string | null> {
+  const { data: row } = await admin
+    .from('creator_connections')
+    .select('access_token, refresh_token, expires_at')
+    .eq('user_id', userId)
+    .eq('provider', 'youtube')
+    .maybeSingle();
+
+  if (!row?.access_token) return null;
+
+  // Refresh if expiring within the next 60 seconds
+  const expiresAt = row.expires_at ? new Date(row.expires_at).getTime() : 0;
+  const needsRefresh = !expiresAt || expiresAt - Date.now() < 60_000;
+
+  if (!needsRefresh) return row.access_token as string;
+  if (!row.refresh_token) return row.access_token as string; // best effort
+
+  try {
+    const fresh = await refreshAccessToken(row.refresh_token as string);
+    const newExpiresAt = new Date(Date.now() + fresh.expires_in * 1000).toISOString();
+    await admin
+      .from('creator_connections')
+      .update({
+        access_token: fresh.access_token,
+        expires_at: newExpiresAt,
+      })
+      .eq('user_id', userId)
+      .eq('provider', 'youtube');
+    return fresh.access_token;
+  } catch (err) {
+    console.warn('getValidYouTubeAccessToken: refresh failed, using stale token', err);
+    return row.access_token as string;
+  }
 }
 
 export type PublicChannel = {
@@ -236,14 +305,18 @@ export type PublicChannel = {
 /**
  * Search YouTube for channels matching a query string.
  * Returns up to 8 results suitable for a picker UI.
+ * Uses OAuth Bearer auth if `accessToken` is provided; otherwise
+ * falls back to the server's YOUTUBE_API_KEY.
  */
-export async function searchYouTubeChannels(query: string): Promise<PublicChannel[]> {
-  const key = getPublicApiKey();
-  if (!key) throw new Error('YOUTUBE_API_KEY not set');
+export async function searchYouTubeChannels(
+  query: string,
+  accessToken?: string
+): Promise<PublicChannel[]> {
+  const auth = ytAuth(accessToken);
 
   // Step 1: search for channel candidates
-  const searchUrl = `${YOUTUBE_API_BASE}/search?part=snippet&type=channel&maxResults=8&q=${encodeURIComponent(query)}&key=${key}`;
-  const searchRes = await fetch(searchUrl);
+  const searchUrl = `${YOUTUBE_API_BASE}/search?part=snippet&type=channel&maxResults=8&q=${encodeURIComponent(query)}${auth.keyParam}`;
+  const searchRes = await fetch(searchUrl, { headers: auth.headers });
   if (!searchRes.ok) throw new Error(`search failed: ${searchRes.status}`);
   const searchData = await searchRes.json();
   const channelIds: string[] = (searchData?.items || [])
@@ -252,8 +325,8 @@ export async function searchYouTubeChannels(query: string): Promise<PublicChanne
   if (channelIds.length === 0) return [];
 
   // Step 2: hydrate full channel details (subscriber count, handle, thumbnail)
-  const detailsUrl = `${YOUTUBE_API_BASE}/channels?part=snippet,statistics&id=${channelIds.join(',')}&key=${key}`;
-  const detailsRes = await fetch(detailsUrl);
+  const detailsUrl = `${YOUTUBE_API_BASE}/channels?part=snippet,statistics&id=${channelIds.join(',')}${auth.keyParam}`;
+  const detailsRes = await fetch(detailsUrl, { headers: auth.headers });
   if (!detailsRes.ok) throw new Error(`channels.list failed: ${detailsRes.status}`);
   const detailsData = await detailsRes.json();
 
@@ -278,19 +351,20 @@ export async function searchYouTubeChannels(query: string): Promise<PublicChanne
 
 /**
  * Fetch the most recent videos for a public YouTube channel.
- * Uses the server YOUTUBE_API_KEY (no OAuth needed).
+ * Uses OAuth Bearer auth if `accessToken` is provided; otherwise
+ * falls back to the server's YOUTUBE_API_KEY.
  * Returns up to `limit` videos (default 10) with full statistics.
  */
 export async function fetchPublicChannelVideos(
   channelId: string,
-  limit = 10
+  limit = 10,
+  accessToken?: string
 ): Promise<YouTubeVideo[]> {
-  const key = getPublicApiKey();
-  if (!key) throw new Error('YOUTUBE_API_KEY not set');
+  const auth = ytAuth(accessToken);
 
   // Step 1: Find the channel's uploads playlist ID
-  const channelUrl = `${YOUTUBE_API_BASE}/channels?part=contentDetails&id=${channelId}&key=${key}`;
-  const channelRes = await fetch(channelUrl);
+  const channelUrl = `${YOUTUBE_API_BASE}/channels?part=contentDetails&id=${channelId}${auth.keyParam}`;
+  const channelRes = await fetch(channelUrl, { headers: auth.headers });
   if (!channelRes.ok) throw new Error(`channels.list failed: ${channelRes.status}`);
   const channelData = await channelRes.json();
   const uploadsPlaylistId =
@@ -299,8 +373,8 @@ export async function fetchPublicChannelVideos(
 
   // Step 2: Get items from the uploads playlist
   const maxResults = Math.min(Math.max(limit, 1), 50);
-  const itemsUrl = `${YOUTUBE_API_BASE}/playlistItems?part=snippet&playlistId=${uploadsPlaylistId}&maxResults=${maxResults}&key=${key}`;
-  const itemsRes = await fetch(itemsUrl);
+  const itemsUrl = `${YOUTUBE_API_BASE}/playlistItems?part=snippet&playlistId=${uploadsPlaylistId}&maxResults=${maxResults}${auth.keyParam}`;
+  const itemsRes = await fetch(itemsUrl, { headers: auth.headers });
   if (!itemsRes.ok) throw new Error(`playlistItems.list failed: ${itemsRes.status}`);
   const itemsData = await itemsRes.json();
   const videoIds: string[] = (itemsData?.items || [])
@@ -309,8 +383,8 @@ export async function fetchPublicChannelVideos(
   if (videoIds.length === 0) return [];
 
   // Step 3: Hydrate videos with statistics
-  const videosUrl = `${YOUTUBE_API_BASE}/videos?part=snippet,statistics,contentDetails&id=${videoIds.join(',')}&key=${key}`;
-  const videosRes = await fetch(videosUrl);
+  const videosUrl = `${YOUTUBE_API_BASE}/videos?part=snippet,statistics,contentDetails&id=${videoIds.join(',')}${auth.keyParam}`;
+  const videosRes = await fetch(videosUrl, { headers: auth.headers });
   if (!videosRes.ok) throw new Error(`videos.list failed: ${videosRes.status}`);
   const videosData = await videosRes.json();
 

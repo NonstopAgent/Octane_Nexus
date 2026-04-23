@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerSupabaseClient } from '@/lib/supabaseServer';
-import { fetchPublicChannelVideos } from '@/lib/youtubeOAuth';
+import { createServerSupabaseClient, createServiceRoleClient } from '@/lib/supabaseServer';
+import { fetchPublicChannelVideos, getValidYouTubeAccessToken } from '@/lib/youtubeOAuth';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
@@ -74,7 +74,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Fetch the channel's recent videos so the first brief has real data
+    // Fetch the channel's recent videos so the first brief has real data.
+    // Use the user's YouTube OAuth token if available — no dependency on the
+    // shared YOUTUBE_API_KEY that has historically expired silently.
     let recentVideos: Array<{
       id: string;
       title: string;
@@ -83,7 +85,13 @@ export async function POST(req: NextRequest) {
       thumbnailUrl: string;
     }> = [];
     try {
-      const videos = await fetchPublicChannelVideos(youtube_channel_id, 10);
+      const admin = createServiceRoleClient();
+      const accessToken = await getValidYouTubeAccessToken(admin, user.id);
+      const videos = await fetchPublicChannelVideos(
+        youtube_channel_id,
+        10,
+        accessToken ?? undefined
+      );
       recentVideos = videos.map((v) => ({
         id: v.id,
         title: v.title,

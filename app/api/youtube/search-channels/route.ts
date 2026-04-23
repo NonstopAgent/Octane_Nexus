@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerSupabaseClient } from '@/lib/supabaseServer';
-import { searchYouTubeChannels } from '@/lib/youtubeOAuth';
+import { createServerSupabaseClient, createServiceRoleClient } from '@/lib/supabaseServer';
+import {
+  searchYouTubeChannels,
+  getValidYouTubeAccessToken,
+} from '@/lib/youtubeOAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,6 +11,10 @@ export const dynamic = 'force-dynamic';
  * GET /api/youtube/search-channels?q=mkbhd
  * Searches YouTube for channels matching the query.
  * Used by the tracked channels picker UI.
+ *
+ * Auth strategy: prefer the user's own OAuth token (fresh, per-user,
+ * no shared API key to expire). Falls back to server YOUTUBE_API_KEY
+ * only if the user has no YouTube connection.
  */
 export async function GET(req: NextRequest) {
   try {
@@ -26,7 +33,11 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Query too long' }, { status: 400 });
     }
 
-    const channels = await searchYouTubeChannels(query);
+    // Try to use the user's OAuth token first (no API key required).
+    const admin = createServiceRoleClient();
+    const accessToken = await getValidYouTubeAccessToken(admin, user.id);
+
+    const channels = await searchYouTubeChannels(query, accessToken ?? undefined);
     return NextResponse.json({ channels });
   } catch (err) {
     console.error('GET /api/youtube/search-channels error:', err);

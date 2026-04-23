@@ -159,11 +159,17 @@ export default function DailyBriefPage() {
         return;
       }
       const data = (await res.json()) as {
-        connections?: Array<{ provider: string; last_synced_at: string | null }>;
+        connections?: Array<{
+          provider: string;
+          last_synced_at: string | null;
+          imported_video_count?: number;
+        }>;
       };
       const yt = (data.connections || []).find((c) => c.provider === 'youtube');
       setYoutubeConnected(!!yt);
-      setHasImportedVideos(!!yt?.last_synced_at);
+      // "Videos imported" only if the sync ran AND actually found videos.
+      // A synced channel with zero uploads should not claim videos are imported.
+      setHasImportedVideos(!!yt && (yt.imported_video_count ?? 0) > 0);
     } catch {
       setYoutubeConnected(false);
     }
@@ -476,20 +482,13 @@ export default function DailyBriefPage() {
                 )}{' '}
                 {hasImportedVideos ? (
                   <span className="text-slate-500">— videos imported ✓</span>
+                ) : youtubeConnected ? (
+                  <span className="text-slate-500">
+                    — this channel has no uploads yet, so the brief will skip &ldquo;your
+                    patterns&rdquo; and focus on competitor insights.
+                  </span>
                 ) : (
-                  <>
-                    {youtubeConnected ? (
-                      <>
-                        — now{' '}
-                        <Link href="/dashboard/memory" className="text-amber-400 hover:underline">
-                          sync your videos
-                        </Link>{' '}
-                        to enable your performance patterns.
-                      </>
-                    ) : (
-                      <>and import your videos (for your performance patterns).</>
-                    )}
-                  </>
+                  <>and import your videos (for your performance patterns).</>
                 )}
               </li>
               <li>

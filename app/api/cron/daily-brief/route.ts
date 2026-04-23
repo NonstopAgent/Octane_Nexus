@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createServiceRoleClient } from '@/lib/supabaseServer';
 import { generateAndSaveBrief } from '@/lib/dailyBrief';
-import { fetchPublicChannelVideos } from '@/lib/youtubeOAuth';
+import {
+  fetchPublicChannelVideos,
+  getValidYouTubeAccessToken,
+} from '@/lib/youtubeOAuth';
 import { runFeedbackLoopForUser } from '@/lib/briefFeedback';
 
 export const dynamic = 'force-dynamic';
@@ -10,7 +13,7 @@ export const maxDuration = 60;
 
 /**
  * Refresh cached uploads for every tracked channel belonging to this user.
- * Uses the public YouTube API key (same as search / initial track).
+ * Uses the user's OAuth token (preferred) or the server YOUTUBE_API_KEY.
  */
 async function refreshTrackedChannelsVideos(
   admin: SupabaseClient,
@@ -25,13 +28,20 @@ async function refreshTrackedChannelsVideos(
     return { refreshed: 0, failed: 0 };
   }
 
+  // Cache the user's OAuth token for the whole loop
+  const accessToken = (await getValidYouTubeAccessToken(admin, userId)) ?? undefined;
+
   let refreshed = 0;
   let failed = 0;
   const now = new Date().toISOString();
 
   for (const row of rows) {
     try {
-      const videos = await fetchPublicChannelVideos(row.youtube_channel_id, 10);
+      const videos = await fetchPublicChannelVideos(
+        row.youtube_channel_id,
+        10,
+        accessToken
+      );
       const recentVideos = videos.map((v) => ({
         id: v.id,
         title: v.title,
@@ -62,7 +72,8 @@ async function refreshTrackedChannelsVideos(
 
 /**
  * Fetch the creator's own recent YouTube videos for the feedback loop.
- * Uses their connected YouTube channel ID from the connections table.
+ * Uses their connected YouTube channel ID from creator_connections (the
+ * actual table — earlier code referenced a non-existent `connections` table).
  * Returns empty array if no YouTube connection is found (non-fatal).
  */
 async function fetchCreatorRecentVideos(
@@ -71,15 +82,22 @@ async function fetchCreatorRecentVideos(
 ): Promise<Array<{ id: string; title: string; viewCount: number; publishedAt: string }>> {
   try {
     const { data: connection } = await admin
-      .from('connections')
-      .select('channel_id')
+      .from('creator_connections')
+      .select('provider_account_id')
       .eq('user_id', userId)
-      .eq('platform', 'youtube')
+      .eq('provider', 'youtube')
       .maybeSingle();
 
-    if (!connection?.channel_id) return [];
+    if (!connection?.provider_account_id) return [];
 
-    const videos = await fetchPublicChannelVideos(connection.channel_id, 20);
+    const accessToken =
+      (await getValidYouTubeAccessToken(admin, userId)) ?? undefined;
+
+    const videos = await fetchPublicChannelVideos(
+      connection.provider_account_id as string,
+      20,
+      accessToken
+    );
     return videos.map((v) => ({
       id: v.id,
       title: v.title,
