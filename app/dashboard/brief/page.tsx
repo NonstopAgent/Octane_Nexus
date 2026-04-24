@@ -101,6 +101,20 @@ function OutlierBadge({ tier, score }: { tier?: string; score?: number }) {
   );
 }
 
+/** Format a subscriber count as "1.71M subs" / "532K subs" / "412 subs". */
+function formatSubs(n: number): string {
+  if (!n || n < 1) return '0 subs';
+  if (n >= 1_000_000) {
+    const v = n / 1_000_000;
+    return `${v >= 10 ? v.toFixed(0) : v.toFixed(2).replace(/\.?0+$/, '')}M subs`;
+  }
+  if (n >= 1_000) {
+    const v = n / 1_000;
+    return `${v >= 10 ? v.toFixed(0) : v.toFixed(1).replace(/\.0$/, '')}K subs`;
+  }
+  return `${n} subs`;
+}
+
 export default function DailyBriefPage() {
   const [brief, setBrief] = useState<DailyBriefRow | null>(null);
   const [briefLoading, setBriefLoading] = useState(true);
@@ -197,7 +211,15 @@ export default function DailyBriefPage() {
         );
         if (res.ok) {
           const data = await res.json();
-          setSearchResults(data.channels || []);
+          // Sort by subscriber count DESC — the real channel almost always
+          // has more subs than the impersonators / fan clubs, so putting it
+          // first is the best signal we can give without paying for
+          // YouTube's verified flag.
+          const sorted = [...(data.channels || [])].sort(
+            (a: SearchChannel, b: SearchChannel) =>
+              (b.subscriberCount || 0) - (a.subscriberCount || 0)
+          );
+          setSearchResults(sorted);
           setSearchError(null);
         } else {
           setSearchResults([]);
@@ -371,46 +393,63 @@ export default function DailyBriefPage() {
         )}
 
         {searchResults.length > 0 && (
-          <ul className="mt-3 space-y-2 rounded-xl border border-slate-800 bg-slate-950/80 p-2">
-            {searchResults.map((c) => (
-              <li
-                key={c.id}
-                className="flex items-center justify-between gap-3 rounded-lg px-2 py-2 hover:bg-slate-800/50"
-              >
-                <div className="flex min-w-0 items-center gap-3">
-                  {c.thumbnailUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={c.thumbnailUrl}
-                      alt=""
-                      className="h-10 w-10 flex-shrink-0 rounded-lg object-cover"
-                    />
-                  ) : (
-                    <div className="h-10 w-10 flex-shrink-0 rounded-lg bg-slate-800" />
-                  )}
-                  <div className="min-w-0">
-                    <p className="truncate font-medium text-slate-200">{c.title}</p>
-                    <p className="truncate text-xs text-slate-500">
-                      {c.handle ? `@${c.handle.replace(/^@/, '')}` : c.id}
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  disabled={channels.length >= 3 || addingId === c.id}
-                  onClick={() => addChannel(c)}
-                  className="inline-flex flex-shrink-0 items-center gap-1 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-300 hover:bg-emerald-500/20 disabled:opacity-40"
+          <>
+            <p className="mt-3 text-[11px] uppercase tracking-wide text-slate-500">
+              Sorted by subscriber count · top match is usually the real channel
+            </p>
+            <ul className="mt-2 space-y-2 rounded-xl border border-slate-800 bg-slate-950/80 p-2">
+              {searchResults.map((c, idx) => (
+                <li
+                  key={c.id}
+                  className={`flex items-center justify-between gap-3 rounded-lg px-2 py-2 ${
+                    idx === 0
+                      ? 'bg-emerald-500/5 ring-1 ring-emerald-500/20'
+                      : 'hover:bg-slate-800/50'
+                  }`}
                 >
-                  {addingId === c.id ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Plus className="h-3.5 w-3.5" />
-                  )}
-                  Track
-                </button>
-              </li>
-            ))}
-          </ul>
+                  <div className="flex min-w-0 items-center gap-3">
+                    {c.thumbnailUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={c.thumbnailUrl}
+                        alt=""
+                        className="h-10 w-10 flex-shrink-0 rounded-lg object-cover"
+                      />
+                    ) : (
+                      <div className="h-10 w-10 flex-shrink-0 rounded-lg bg-slate-800" />
+                    )}
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="truncate font-medium text-slate-200">{c.title}</p>
+                        {idx === 0 && (
+                          <span className="flex-shrink-0 rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-400">
+                            Top match
+                          </span>
+                        )}
+                      </div>
+                      <p className="truncate text-xs text-slate-500">
+                        <span className="text-slate-400">{formatSubs(c.subscriberCount)}</span>
+                        {c.handle ? ` · @${c.handle.replace(/^@/, '')}` : ''}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={channels.length >= 3 || addingId === c.id}
+                    onClick={() => addChannel(c)}
+                    className="inline-flex flex-shrink-0 items-center gap-1 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-300 hover:bg-emerald-500/20 disabled:opacity-40"
+                  >
+                    {addingId === c.id ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Plus className="h-3.5 w-3.5" />
+                    )}
+                    Track
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </>
         )}
 
         {/* Tracked channels list */}

@@ -341,6 +341,11 @@ export async function generateBrief(
             temperature: 0.85,
             maxOutputTokens: 2500,
             responseMimeType: 'application/json',
+            // Gemini 2.5 is a "thinking" model that burns hidden reasoning
+            // tokens before producing output. For structured JSON briefs we
+            // don't need chain-of-thought — disabling it keeps the full
+            // 2500-token budget for the actual brief JSON.
+            thinkingConfig: { thinkingBudget: 0 },
           },
         }),
       }

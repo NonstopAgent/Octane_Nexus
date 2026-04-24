@@ -115,11 +115,28 @@ async function callGeminiAPI(
 ): Promise<{ ok: boolean; data: any; error: string | null } | null> {
   try {
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-    
+
+    // Gemini 2.5 is a thinking model that burns hidden reasoning tokens
+    // before producing output. For our use cases (JSON generation, short
+    // captions, list outputs) we never need chain-of-thought, so we
+    // disable it globally here. This ensures the full maxOutputTokens
+    // budget is spent on the actual response instead of being eaten by
+    // invisible thinking. Callers can override by setting
+    // generationConfig.thinkingConfig themselves.
+    const body = { ...requestBody };
+    body.generationConfig = {
+      ...(body.generationConfig || {}),
+      thinkingConfig: {
+        ...(body.generationConfig?.thinkingConfig || {}),
+        thinkingBudget:
+          body.generationConfig?.thinkingConfig?.thinkingBudget ?? 0,
+      },
+    };
+
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestBody),
+      body: JSON.stringify(body),
     });
 
     // If 404, log and return null (safety net will handle it)
@@ -1720,7 +1737,11 @@ Be direct, specific, and practical. Reference their niche AND their actual saved
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: systemPrompt }] },
           contents: geminiMessages,
-          generationConfig: { temperature: 0.8, maxOutputTokens: 1000 },
+          generationConfig: {
+            temperature: 0.8,
+            maxOutputTokens: 1000,
+            thinkingConfig: { thinkingBudget: 0 },
+          },
         }),
       }
     );

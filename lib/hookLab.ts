@@ -82,6 +82,7 @@ No markdown fences, no extra keys.`;
           temperature: 0.9,
           maxOutputTokens: 2048,
           responseMimeType: 'application/json',
+          thinkingConfig: { thinkingBudget: 0 },
         },
       }),
     }

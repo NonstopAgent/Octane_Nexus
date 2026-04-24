@@ -165,6 +165,7 @@ Example: ["Contrarian take on X reframes the default assumption", "Specific numb
           temperature: 0.6,
           maxOutputTokens: 800,
           responseMimeType: 'application/json',
+          thinkingConfig: { thinkingBudget: 0 },
         },
       }),
     }
