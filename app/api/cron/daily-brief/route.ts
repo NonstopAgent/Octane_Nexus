@@ -18,14 +18,37 @@ export const maxDuration = 60;
 async function refreshTrackedChannelsVideos(
   admin: SupabaseClient,
   userId: string
-): Promise<{ refreshed: number; failed: number }> {
+): Promise<{ refreshed: number; failed: number; skipped: number }> {
   const { data: rows, error } = await admin
     .from('tracked_channels')
-    .select('id, youtube_channel_id')
+    .select('id, youtube_channel_id, last_synced_at')
     .eq('user_id', userId);
 
   if (error || !rows?.length) {
-    return { refreshed: 0, failed: 0 };
+    return { refreshed: 0, failed: 0, skipped: 0 };
+  }
+
+  // Skip channels synced recently.
+  //
+  // This ran unconditionally on every invocation, so each call to this
+  // endpoint spent real YouTube API quota per tracked channel. Combined with
+  // the fact that the endpoint currently authorizes on a spoofable
+  // User-Agent (CRON_SECRET is unset), that made repeat triggering a way to
+  // burn quota on someone else's behalf.
+  //
+  // A daily job never needs to re-sync something fetched an hour ago, so
+  // this costs nothing in normal operation and bounds the damage otherwise.
+  const STALE_AFTER_MS = 6 * 60 * 60 * 1000;
+  const now_ms = Date.now();
+  const stale = rows.filter((row) => {
+    if (!row.last_synced_at) return true;
+    const age = now_ms - new Date(row.last_synced_at as string).getTime();
+    return !Number.isFinite(age) || age >= STALE_AFTER_MS;
+  });
+  const skipped = rows.length - stale.length;
+
+  if (stale.length === 0) {
+    return { refreshed: 0, failed: 0, skipped };
   }
 
   // Cache the user's OAuth token for the whole loop
@@ -35,7 +58,7 @@ async function refreshTrackedChannelsVideos(
   let failed = 0;
   const now = new Date().toISOString();
 
-  for (const row of rows) {
+  for (const row of stale) {
     try {
       const videos = await fetchPublicChannelVideos(
         row.youtube_channel_id,
@@ -67,7 +90,7 @@ async function refreshTrackedChannelsVideos(
     }
   }
 
-  return { refreshed, failed };
+  return { refreshed, failed, skipped };
 }
 
 /**
@@ -251,14 +274,17 @@ export async function GET(req: NextRequest) {
 
   let channelsRefreshed = 0;
   let channelRefreshFailed = 0;
+  let channelsAlreadyFresh = 0;
   let feedbackMatched = 0;
   let feedbackIgnored = 0;
 
   for (const userId of userIds) {
     // Step 1: Refresh competitor channel videos
-    const { refreshed, failed } = await refreshTrackedChannelsVideos(admin, userId);
+    const { refreshed, failed, skipped: freshSkipped } =
+      await refreshTrackedChannelsVideos(admin, userId);
     channelsRefreshed += refreshed;
     channelRefreshFailed += failed;
+    channelsAlreadyFresh += freshSkipped;
 
     // Step 2: Run the feedback loop BEFORE generating the new brief
     // (so today's brief benefits from yesterday's feedback)
@@ -297,6 +323,7 @@ export async function GET(req: NextRequest) {
     reused,
     skipped,
     channelsRefreshed,
+    channelsAlreadyFresh,
     channelRefreshFailed,
     feedbackMatched,
     feedbackIgnored,
