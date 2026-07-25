@@ -28,7 +28,9 @@ export async function POST() {
     const admin = createServiceRoleClient();
     const today = new Date().toISOString().slice(0, 10);
 
-    const result = await generateAndSaveBrief(admin, user.id, today);
+    // force: a creator pressing "Generate today's brief" is explicitly asking
+    // for a fresh one, so bypass the idempotency guard the cron relies on.
+    const result = await generateAndSaveBrief(admin, user.id, today, { force: true });
     if (!result) {
       return NextResponse.json(
         { error: 'Not enough data yet. Connect YouTube and import your videos, or add a tracked channel.' },

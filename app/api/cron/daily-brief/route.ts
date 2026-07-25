@@ -247,6 +247,7 @@ export async function GET(req: NextRequest) {
   const userIds = [...ids].slice(0, 25);
   let generated = 0;
   let skipped = 0;
+  let reused = 0;
 
   let channelsRefreshed = 0;
   let channelRefreshFailed = 0;
@@ -280,9 +281,12 @@ export async function GET(req: NextRequest) {
       console.warn(`cron: feedback loop failed for user ${userId}`, feedbackErr);
     }
 
-    // Step 3: Generate today's brief (now powered by updated memory)
+    // Step 3: Generate today's brief (now powered by updated memory).
+    // No force flag: if today's brief already exists we reuse it rather than
+    // paying for another Gemini call, which makes repeat invocation cheap.
     const result = await generateAndSaveBrief(admin, userId, today);
-    if (result) generated += 1;
+    if (result?.reused) reused += 1;
+    else if (result) generated += 1;
     else skipped += 1;
   }
 
@@ -290,6 +294,7 @@ export async function GET(req: NextRequest) {
     date: today,
     eligibleUsers: userIds.length,
     generated,
+    reused,
     skipped,
     channelsRefreshed,
     channelRefreshFailed,

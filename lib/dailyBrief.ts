@@ -399,8 +399,44 @@ export async function generateBrief(
 export async function generateAndSaveBrief(
   admin: SupabaseClient,
   userId: string,
-  briefDate: string // YYYY-MM-DD
-): Promise<{ id: string; brief: DailyBrief } | null> {
+  briefDate: string, // YYYY-MM-DD
+  options: { force?: boolean } = {}
+): Promise<{ id: string; brief: DailyBrief; reused?: boolean } | null> {
+  // Idempotency guard.
+  //
+  // Generation used to call Gemini FIRST and upsert afterwards, so every
+  // invocation cost a full model call even when today's brief already
+  // existed. That made repeat triggering of the cron endpoint an easy way to
+  // burn the daily Gemini quota — which matters because, with CRON_SECRET
+  // unset, the endpoint currently authorizes on a spoofable User-Agent.
+  //
+  // The cron passes no options and reuses an existing brief. The user-facing
+  // "Regenerate" path passes force: true, because a creator clicking the
+  // button is explicitly asking for a fresh one.
+  if (!options.force) {
+    const { data: existing } = await admin
+      .from('daily_briefs')
+      .select('id, competitor_insights, your_patterns, todays_idea')
+      .eq('user_id', userId)
+      .eq('brief_date', briefDate)
+      .maybeSingle();
+
+    if (existing?.id) {
+      console.info(
+        `generateAndSaveBrief: brief already exists for user ${userId} on ${briefDate}, skipping generation`
+      );
+      return {
+        id: existing.id as string,
+        brief: {
+          competitor_insights: (existing.competitor_insights ?? []) as CompetitorInsight[],
+          your_patterns: (existing.your_patterns ?? []) as YourPattern[],
+          todays_idea: existing.todays_idea as TodaysIdea,
+        },
+        reused: true,
+      };
+    }
+  }
+
   const ctx = await gatherUserContext(admin, userId);
   if (!ctx) {
     console.log(`generateAndSaveBrief: no context for user ${userId}, skipping`);
