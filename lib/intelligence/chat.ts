@@ -1,8 +1,8 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { buildNexusIntelligence, type OrchestratorStrategicFlags } from './orchestrator';
 import type { GrowthContext } from './context';
 import type { NexusUserProfile } from './profile';
 import type { HistoricalPostData } from './patterns';
+import { callGeminiModel, extractGeminiText } from '@/lib/geminiModels';
 
 export interface NexusChatInput {
   message: string;
@@ -121,19 +121,22 @@ export async function generateNexusResponse(input: NexusChatInput): Promise<stri
     return 'Nexus is unavailable: no API key configured. Set GEMINI_API_KEY in your environment.';
   }
 
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    model: 'gemini-2.5-flash',
-    systemInstruction: systemPrompt,
-  });
-
+  // Routed through the shared caller so Nexus chat inherits the model
+  // fallback chain instead of dying whenever Google retires a model.
   try {
-    const result = await model.generateContent({
+    const result = await callGeminiModel(apiKey, {
+      systemInstruction: { parts: [{ text: systemPrompt }] },
       contents: [{ role: 'user', parts: [{ text: message }] }],
+      generationConfig: { maxOutputTokens: 1000 },
     });
-    const response = result.response;
-    const text = response.text();
-    return text?.trim() ?? 'Nexus could not generate a response.';
+
+    if (!result.ok) {
+      console.error('generateNexusResponse: Gemini error', result.status, result.error);
+      throw new Error('Nexus is having trouble responding. Please try again.');
+    }
+
+    const text = extractGeminiText(result.data);
+    return text.trim() || 'Nexus could not generate a response.';
   } catch (err) {
     console.error('generateNexusResponse error:', err);
     throw new Error('Nexus is having trouble responding. Please try again.');

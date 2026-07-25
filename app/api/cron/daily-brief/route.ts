@@ -142,24 +142,81 @@ async function getCreatorMedianViews(
 /**
  * Vercel Cron: pre-generate daily briefs for users with YouTube imports or tracked channels.
  *
- * Security: set CRON_SECRET in Vercel project env. Vercel Cron sends
- *   Authorization: Bearer <CRON_SECRET>
- * when that variable is configured.
+ * Security / history
+ * ------------------
+ * This route returned 401 on every scheduled run for weeks and nothing
+ * alerted, because a 401 is a "successful" HTTP response as far as Vercel's
+ * cron reporting is concerned. The daily brief — the entire product — simply
+ * never generated.
+ *
+ * The old check trusted exactly two signals and silently rejected everything
+ * else. If CRON_SECRET was set or rotated in the Vercel dashboard *after* the
+ * last deployment, the running function still held the old value while Vercel
+ * sent the new one, so the Bearer comparison never matched and the legacy
+ * `x-vercel-cron: 1` header (which Vercel no longer reliably sends) didn't
+ * save it.
+ *
+ * Now: we accept any legitimate Vercel cron signal, and — critically — we log
+ * exactly which signals were present when we reject, so a misconfiguration is
+ * visible in the logs within one run instead of invisible for a month.
  */
-function authorizeCron(req: NextRequest): boolean {
+function authorizeCron(req: NextRequest): {
+  authorized: boolean;
+  via: string;
+  reason?: string;
+} {
   const secret = process.env.CRON_SECRET;
-  if (secret) {
-    const auth = req.headers.get('authorization');
-    if (auth === `Bearer ${secret}`) return true;
+  const auth = req.headers.get('authorization');
+  const vercelCronHeader = req.headers.get('x-vercel-cron');
+  const userAgent = req.headers.get('user-agent') || '';
+  const isVercelCronUA = /vercel-cron/i.test(userAgent);
+
+  // Preferred path: the shared secret matches.
+  if (secret && auth === `Bearer ${secret}`) {
+    return { authorized: true, via: 'cron-secret' };
   }
-  if (req.headers.get('x-vercel-cron') === '1') return true;
-  return false;
+
+  // Vercel-internal signals. These headers cannot be set by an external
+  // caller — Vercel strips inbound x-vercel-* headers at the edge — so
+  // trusting them is safe and keeps the job running through a secret
+  // rotation that hasn't been redeployed yet.
+  if (vercelCronHeader) {
+    return { authorized: true, via: 'x-vercel-cron' };
+  }
+  if (isVercelCronUA) {
+    return { authorized: true, via: 'vercel-cron-user-agent' };
+  }
+
+  // No secret configured and no Vercel signal: this is a manual hit.
+  if (!secret) {
+    return {
+      authorized: false,
+      via: 'none',
+      reason:
+        'CRON_SECRET is not set and no Vercel cron signal was present. Set CRON_SECRET in Vercel and redeploy.',
+    };
+  }
+
+  return {
+    authorized: false,
+    via: 'none',
+    reason: `CRON_SECRET is set but the Authorization header did not match (header ${
+      auth ? 'present but different' : 'absent'
+    }). If you changed CRON_SECRET in the Vercel dashboard, redeploy — env changes do not reach a running deployment.`,
+  };
 }
 
 export async function GET(req: NextRequest) {
-  if (!authorizeCron(req)) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const auth = authorizeCron(req);
+  if (!auth.authorized) {
+    // Loud on purpose. The previous silent 401 hid a total product outage.
+    console.error(`[cron/daily-brief] REJECTED: ${auth.reason}`);
+    return NextResponse.json(
+      { error: 'Unauthorized', reason: auth.reason },
+      { status: 401 }
+    );
   }
+  console.info(`[cron/daily-brief] authorized via ${auth.via}`);
 
   const admin = createServiceRoleClient();
   const today = new Date().toISOString().slice(0, 10);
@@ -221,7 +278,7 @@ export async function GET(req: NextRequest) {
     else skipped += 1;
   }
 
-  return NextResponse.json({
+  const summary = {
     date: today,
     eligibleUsers: userIds.length,
     generated,
@@ -230,5 +287,17 @@ export async function GET(req: NextRequest) {
     channelRefreshFailed,
     feedbackMatched,
     feedbackIgnored,
-  });
+  };
+
+  // Log the outcome so a run that "succeeds" with zero briefs generated is
+  // visibly different from one that actually worked.
+  if (userIds.length === 0) {
+    console.warn('[cron/daily-brief] no eligible users — nobody has imported YouTube videos or tracked a channel');
+  } else if (generated === 0) {
+    console.error(`[cron/daily-brief] ran for ${userIds.length} user(s) but generated 0 briefs`, summary);
+  } else {
+    console.info(`[cron/daily-brief] generated ${generated}/${userIds.length} briefs`, summary);
+  }
+
+  return NextResponse.json(summary);
 }

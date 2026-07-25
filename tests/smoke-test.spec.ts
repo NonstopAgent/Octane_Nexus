@@ -1,171 +1,128 @@
 import { test, expect } from '@playwright/test';
 
-test.describe('Night Shift - Full Audit Journey', () => {
-  test('Real Login → Full Audit (Landing, Dashboard, Library, Production, Post Lab)', async ({
-    page,
-  }) => {
-    // ========== 1. Landing Page (/)
+/**
+ * Public-surface smoke test.
+ *
+ * REPLACES the previous version, which had rotted into false confidence: it
+ * asserted the landing page said "Build Your High-Authority / Creator Identity"
+ * and signed in as admin@octanenexus.com with a password. Both belonged to the
+ * pre-pivot product. The suite could not pass, so nobody ran it, so nothing
+ * noticed when the daily-brief cron started returning 401 on every run.
+ *
+ * Design rules for this file, so it doesn't rot the same way:
+ *   - No credentials. Everything here runs against the unauthenticated
+ *     surface, so it works in CI and against production without secrets.
+ *   - Assert on structure and behaviour (nav targets, status codes, gating),
+ *     not on marketing copy, which changes every polish pass.
+ *
+ * Run against production:
+ *   PLAYWRIGHT_BASE_URL=https://octane-nexus-6em9.vercel.app npx playwright test
+ */
+
+const PUBLIC_ROUTES = ['/', '/how-it-works', '/pricing', '/login'];
+
+test.describe('public surface', () => {
+  for (const route of PUBLIC_ROUTES) {
+    test(`${route} responds 200 and renders`, async ({ page }) => {
+      const response = await page.goto(route);
+      expect(response?.status(), `${route} should not error`).toBeLessThan(400);
+      await expect(page.locator('body')).toBeVisible();
+      // A blank or crashed render still returns 200; assert real content.
+      const text = await page.locator('body').innerText();
+      expect(text.trim().length, `${route} rendered an empty body`).toBeGreaterThan(100);
+    });
+  }
+
+  test('landing page routes visitors into signup', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByText(/Build Your High-Authority|Creator Identity/)).toBeVisible({
-      timeout: 10000,
-    });
-    await expect(
-      page.getByRole('link', { name: /Get Started|Login/i }).first()
-    ).toBeVisible();
+    const cta = page.locator('a[href*="/login"]').first();
+    await expect(cta).toBeVisible();
+    await cta.click();
+    await expect(page).toHaveURL(/\/login/);
+  });
 
-    // ========== 2. Real Login Flow
-    await page.goto('/login');
-    await page.waitForURL(/\/login/, { timeout: 5000 });
+  test('footer links all resolve', async ({ page, request }) => {
+    await page.goto('/');
+    const hrefs = await page.locator('footer a').evaluateAll((links) =>
+      links
+        .map((l) => l.getAttribute('href'))
+        .filter((h): h is string => !!h && h.startsWith('/'))
+    );
+    expect(hrefs.length).toBeGreaterThan(0);
 
-    await page.getByLabel('Email').fill('admin@octanenexus.com');
-    await page.getByLabel('Password').fill('password123');
-    await page.getByRole('button', { name: /Sign In/i }).click();
-
-    await expect(page).toHaveURL(/\/dashboard/, { timeout: 15000 });
-
-    // ========== 3. Dashboard (/dashboard)
-    await page.goto('/dashboard');
-    await expect(
-      page.getByText(/Welcome|Brand Vision|Dashboard/i)
-    ).toBeVisible({ timeout: 10000 });
-    // Main stats/cards area (multiple main elements exist; take first)
-    await expect(page.getByRole('main').first()).toBeVisible();
-
-    // ========== 4. Library (/dashboard/library)
-    await page.getByRole('link', { name: 'Library' }).click();
-    await page.waitForURL(/\/dashboard\/library/, { timeout: 15000 });
-
-    // Wait for real content to load
-    await page.waitForLoadState('networkidle');
-
-    // Assert Video Inspiration section visible (real YouTube thumbnails or fallback)
-    await expect(page.getByText('Video Inspiration')).toBeVisible({ timeout: 15000 });
-
-    // Assert Creator Tools list (CapCut, Notion) - multiple instances exist; take first
-    await expect(page.getByText(/CapCut|Notion/).first()).toBeVisible({ timeout: 5000 });
-
-    // ========== 5. Production (/dashboard/production)
-    await page.getByRole('link', { name: 'Production' }).click();
-    await page.waitForURL(/\/dashboard\/production/, { timeout: 5000 });
-
-    // Click first Kanban card if any (opens Script Editor modal)
-    const card = page.locator('main [role="button"]').filter({ hasText: /.+/ }).first();
-    const cardCount = await card.count();
-    if (cardCount > 0) {
-      await card.click();
-      await expect(
-        page.getByRole('button', { name: /Generate Assets|Regenerate \(new version\)/ })
-      ).toBeVisible({ timeout: 5000 });
-    } else {
-      // No cards - verify Production Board loaded (use heading to avoid strict mode)
-      await expect(page.getByRole('heading', { name: 'Production Board' })).toBeVisible();
+    for (const href of [...new Set(hrefs)]) {
+      const response = await request.get(href);
+      expect(response.status(), `footer link ${href} is broken`).toBeLessThan(400);
     }
+  });
 
-    // ========== 6. Post Lab (/dashboard/post-lab)
-    await page.getByRole('link', { name: 'Post Lab' }).click();
-    await page.waitForURL(/\/dashboard\/post-lab/, { timeout: 5000 });
-    await expect(page.getByRole('heading', { name: 'Post Lab' })).toBeVisible({
-      timeout: 5000,
-    });
+  test('robots.txt and sitemap.xml exist', async ({ request }) => {
+    const robots = await request.get('/robots.txt');
+    expect(robots.status(), 'robots.txt should not 404').toBe(200);
+    expect(await robots.text()).toContain('Sitemap');
+
+    const sitemap = await request.get('/sitemap.xml');
+    expect(sitemap.status(), 'sitemap.xml should not 404').toBe(200);
+    expect(await sitemap.text()).toContain('<urlset');
   });
 });
 
-test.describe('Invariants', () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto('/login');
-    await page.waitForURL(/\/login/, { timeout: 5000 });
-    await page.getByLabel('Email').fill('admin@octanenexus.com');
-    await page.getByLabel('Password').fill('password123');
-    await page.getByRole('button', { name: /Sign In/i }).click();
-    await expect(page).toHaveURL(/\/dashboard/, { timeout: 15000 });
+test.describe('auth gating', () => {
+  const PROTECTED = ['/dashboard', '/dashboard/brief', '/dashboard/settings'];
+
+  for (const route of PROTECTED) {
+    test(`${route} redirects anonymous users to login`, async ({ page }) => {
+      await page.goto(route);
+      await expect(page).toHaveURL(/\/login/);
+    });
+  }
+});
+
+test.describe('critical endpoints', () => {
+  /**
+   * The regression that motivated this file. authorizeCron() must reject an
+   * unauthenticated caller, but the response has to explain itself — a bare
+   * 401 with no reason is what let a total outage hide for weeks.
+   */
+  test('daily-brief cron rejects unauthenticated callers with a reason', async ({ request }) => {
+    const response = await request.get('/api/cron/daily-brief');
+    expect(response.status()).toBe(401);
+    const body = await response.json();
+    expect(body.error).toBe('Unauthorized');
+    expect(
+      typeof body.reason === 'string' && body.reason.length > 0,
+      'a 401 with no reason is how the last outage stayed invisible'
+    ).toBe(true);
   });
 
-  test('A: Schedule without date does not hide post', async ({ page }) => {
-    await page.goto('/dashboard/post-lab');
-    await page.waitForURL(/\/dashboard\/post-lab/, { timeout: 5000 });
-
-    const queueCards = page.getByTestId('post-lab-queue-card');
-    const countBefore = await queueCards.count();
-    const scheduleBtn = page.getByTestId('schedule-post-btn');
-
-    if (countBefore === 0) {
-      test.skip();
-      return;
+  test('AI endpoints require authentication', async ({ request }) => {
+    for (const route of ['/api/trending-topic', '/api/analyze-idea']) {
+      const response = await request.post(route, { data: {} });
+      expect(response.status(), `${route} must not be open`).toBe(401);
     }
-
-    await queueCards.first().click();
-    await expect(scheduleBtn).toBeVisible({ timeout: 3000 });
-
-    let res: Awaited<ReturnType<typeof page.waitForResponse>> | null = null;
-    try {
-      [res] = await Promise.all([
-        page.waitForResponse((r) => {
-          const url = r.url();
-          const isSchedule = url.includes('schedule');
-          const isDashboardPost = r.request().postData() != null && url.includes('/dashboard');
-          return Boolean(isSchedule || isDashboardPost);
-        }, { timeout: 10000 }),
-        scheduleBtn.click(),
-      ]);
-    } catch {
-      res = null;
-    }
-    if (res != null && res.status() >= 500) {
-      expect(res.status()).toBeLessThan(500);
-    }
-
-    await expect(page.getByText(/Please pick a date/i)).toBeVisible({ timeout: 5000 });
-
-    await page.reload();
-    await page.waitForLoadState('networkidle');
-    const countAfter = await page.getByTestId('post-lab-queue-card').count();
-    expect(countAfter).toBeGreaterThanOrEqual(countBefore);
   });
 
-  test('B: Regenerate from READY creates new version', async ({ page }) => {
-    await page.goto('/dashboard/production');
-    await page.waitForURL(/\/dashboard\/production/, { timeout: 5000 });
+  /**
+   * Health must be able to fail. It previously reported gemini.ok = true by
+   * checking only that the env var was non-empty, which stayed green through
+   * a complete Gemini outage.
+   */
+  test('health check reports a real Gemini verdict', async ({ request }) => {
+    const response = await request.get('/api/health-check');
+    const body = await response.json();
 
-    const readyColumn = page.getByTestId('production-column-ready');
-    const readyCards = readyColumn.locator('[data-testid="production-card"]');
-    const readyCountBefore = await readyCards.count();
+    expect(body).toHaveProperty('gemini');
+    expect(body).toHaveProperty('database');
+    expect(body).toHaveProperty('storage');
 
-    if (readyCountBefore === 0) {
-      test.skip();
-      return;
+    // Degraded infrastructure must surface as a non-200.
+    if (!body.ok) {
+      expect(response.status()).toBe(503);
+    } else {
+      expect(response.status()).toBe(200);
+      // A green Gemini verdict must name the model that answered, which is
+      // only possible if a real request was actually made.
+      expect(body.gemini.model, 'green gemini with no model means no probe ran').toBeTruthy();
     }
-
-    await readyCards.first().click();
-    await expect(page.getByTestId('script-editor-modal')).toBeVisible({ timeout: 3000 });
-    const regenerateBtn = page.getByTestId('regenerate-new-version-btn');
-    if ((await regenerateBtn.count()) === 0) {
-      test.skip();
-      return;
-    }
-
-    let response: Awaited<ReturnType<typeof page.waitForResponse>> | null = null;
-    try {
-      [response] = await Promise.all([
-        page.waitForResponse((r) => {
-          const url = r.url();
-          return Boolean(url.includes('generate-video-asset') || url.includes('create-version'));
-        }, { timeout: 20000 }),
-        regenerateBtn.click(),
-      ]);
-    } catch {
-      response = null;
-    }
-    if (response != null && response.status() >= 500) {
-      expect(response.status()).toBeLessThan(500);
-    }
-
-    await expect(
-      page.getByText(/New version created|Generating/i)
-    ).toBeVisible({ timeout: 15000 });
-
-    await page.waitForTimeout(2000);
-    await expect(page.getByTestId('script-editor-modal')).not.toBeVisible();
-    const readyCountAfter = await page.getByTestId('production-column-ready').locator('[data-testid="production-card"]').count();
-    expect(readyCountAfter).toBeGreaterThanOrEqual(readyCountBefore);
   });
 });

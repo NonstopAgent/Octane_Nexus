@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabaseServer';
+import { callGeminiModel, extractGeminiText } from '@/lib/geminiModels';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
@@ -154,29 +155,21 @@ ${titlesBlock}
 Respond with ONLY a JSON array of ${videos.length} strings, in the same order as the input. No markdown, no commentary.
 Example: ["Contrarian take on X reframes the default assumption", "Specific number anchors credibility ...", ...]`;
 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          temperature: 0.6,
-          maxOutputTokens: 800,
-          responseMimeType: 'application/json',
-          thinkingConfig: { thinkingBudget: 0 },
-        },
-      }),
-    }
-  );
+  const res = await callGeminiModel(apiKey, {
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: {
+      temperature: 0.6,
+      maxOutputTokens: 800,
+      responseMimeType: 'application/json',
+      thinkingConfig: { thinkingBudget: 0 },
+    },
+  });
 
   if (!res.ok) {
-    throw new Error(`Gemini returned ${res.status}`);
+    throw new Error(`Gemini returned ${res.status}: ${res.error}`);
   }
 
-  const data = await res.json();
-  const text: string = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  const text = extractGeminiText(res.data);
   const cleaned = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
 
   let analyses: unknown;

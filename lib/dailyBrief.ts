@@ -28,6 +28,7 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { callGeminiModel, extractGeminiText } from '@/lib/geminiModels';
 import {
   detectOutliers,
   detectOwnOutliers,
@@ -325,39 +326,30 @@ export async function generateBrief(
     return null;
   }
 
-  const model = 'gemini-2.5-flash';
   const prompt = buildBriefPrompt(ctx, memoryBlock);
   const start = Date.now();
 
   try {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            temperature: 0.85,
-            maxOutputTokens: 2500,
-            responseMimeType: 'application/json',
-            // Gemini 2.5 is a "thinking" model that burns hidden reasoning
-            // tokens before producing output. For structured JSON briefs we
-            // don't need chain-of-thought — disabling it keeps the full
-            // 2500-token budget for the actual brief JSON.
-            thinkingConfig: { thinkingBudget: 0 },
-          },
-        }),
-      }
-    );
+    // Model choice, thinking-token suppression, and retirement fallback are
+    // all handled centrally. Google has retired the model under this call
+    // three times; see lib/geminiModels for the history.
+    const response = await callGeminiModel(apiKey, {
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: {
+        temperature: 0.85,
+        maxOutputTokens: 2500,
+        responseMimeType: 'application/json',
+        thinkingConfig: { thinkingBudget: 0 },
+      },
+    });
 
     if (!response.ok) {
-      console.error('generateBrief: Gemini error', response.status, await response.text());
+      console.error('generateBrief: Gemini error', response.status, response.error);
       return null;
     }
 
-    const data = await response.json();
-    const text: string = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const model = response.model ?? 'unknown';
+    const text = extractGeminiText(response.data);
     if (!text) {
       console.error('generateBrief: empty Gemini response');
       return null;

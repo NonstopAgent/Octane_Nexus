@@ -1,34 +1,50 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { probeGemini } from '@/lib/geminiModels';
 
 export const dynamic = 'force-dynamic';
 
-type ServiceStatus = { ok: boolean; error?: string };
+type ServiceStatus = { ok: boolean; error?: string; [key: string]: unknown };
 
 /**
- * Lightweight health check.
+ * Health check.
  *
- * IMPORTANT: We do NOT make a real Gemini API call from here. Hitting
- * generateContent on every health check — including Vercel's own deploy
- * checks and any external monitoring — will quietly burn through the
- * Gemini free-tier quota (~1500 req/day on 2.0 Flash). That exact bug
- * took us out in April 2026.
+ * History — two competing failure modes, both of which have bitten us:
  *
- * For Gemini we just confirm the key is configured and non-empty. If
- * you need a true round-trip probe, do it on-demand from a protected
- * admin route, not from an unauthenticated public endpoint.
+ *   1. Calling Gemini generateContent on every hit burned the free-tier
+ *      daily quota, because Vercel deploy probes and external monitors hit
+ *      this route constantly. That took the product out in April 2026.
+ *
+ *   2. Over-correcting to "just check the env var is non-empty" meant this
+ *      endpoint cheerfully reported {"gemini":{"ok":true}} for weeks while
+ *      Google had retired the model out from under us and every AI feature
+ *      in the app was dead. A health check that cannot fail is not a health
+ *      check.
+ *
+ * The fix is a real round-trip probe that is *cached* (5 min TTL, see
+ * lib/geminiModels#probeGemini). Monitoring can poll this every 30 seconds
+ * and still cost at most 12 Gemini calls per hour. Pass ?deep=1 to force a
+ * fresh probe when you're actively debugging.
  */
-export async function GET() {
+export async function GET(req: NextRequest) {
   const results: Record<string, ServiceStatus> = {};
+  const force = req.nextUrl.searchParams.get('deep') === '1';
 
-  // 1. Gemini config presence (no network call)
+  // 1. Gemini — real round-trip, cached
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     results.gemini = { ok: false, error: 'GEMINI_API_KEY not set' };
   } else if (apiKey.length < 20) {
     results.gemini = { ok: false, error: 'GEMINI_API_KEY looks malformed' };
   } else {
-    results.gemini = { ok: true };
+    const probe = await probeGemini(force);
+    results.gemini = {
+      ok: probe.ok,
+      ...(probe.error ? { error: probe.error } : {}),
+      model: probe.model,
+      checkedAt: probe.checkedAt,
+      cached: probe.cached,
+    };
   }
 
   // 2. Supabase DB
@@ -63,5 +79,11 @@ export async function GET() {
     results.storage = { ok: false, error: msg };
   }
 
-  return NextResponse.json(results);
+  // Return a non-200 when something is actually down, so uptime monitors
+  // and Vercel deploy checks can fail on it instead of parsing the body.
+  const allOk = Object.values(results).every((r) => r.ok);
+  return NextResponse.json(
+    { ok: allOk, ...results },
+    { status: allOk ? 200 : 503 }
+  );
 }

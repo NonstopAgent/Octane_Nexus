@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { callGeminiModel, extractGeminiText } from '@/lib/geminiModels';
 
 export type HookLine = {
   hook: string;
@@ -71,26 +72,18 @@ hook: one opening line, max 180 characters.
 inspired_by: "Creator video: [title]" or "Competitor [channel]: [title]" or "general best practice".
 No markdown fences, no extra keys.`;
 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          temperature: 0.9,
-          maxOutputTokens: 2048,
-          responseMimeType: 'application/json',
-          thinkingConfig: { thinkingBudget: 0 },
-        },
-      }),
-    }
-  );
+  const res = await callGeminiModel(key, {
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: {
+      temperature: 0.9,
+      maxOutputTokens: 2048,
+      responseMimeType: 'application/json',
+      thinkingConfig: { thinkingBudget: 0 },
+    },
+  });
 
   if (!res.ok) return null;
-  const data = await res.json();
-  const text: string = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  const text = extractGeminiText(res.data);
   if (!text) return null;
 
   try {
