@@ -176,15 +176,23 @@ function authorizeCron(req: NextRequest): {
     return { authorized: true, via: 'cron-secret' };
   }
 
-  // Vercel-internal signals. These headers cannot be set by an external
-  // caller — Vercel strips inbound x-vercel-* headers at the edge — so
-  // trusting them is safe and keeps the job running through a secret
-  // rotation that hasn't been redeployed yet.
+  // x-vercel-* headers are stripped from inbound external requests at the
+  // edge, so their presence genuinely proves a Vercel-internal caller.
   if (vercelCronHeader) {
     return { authorized: true, via: 'x-vercel-cron' };
   }
-  if (isVercelCronUA) {
-    return { authorized: true, via: 'vercel-cron-user-agent' };
+
+  // User-Agent is trivially spoofable, so it is ONLY accepted when no
+  // secret is configured — i.e. as the last resort that keeps the product
+  // running rather than as an alternative to real auth. Once CRON_SECRET
+  // is set, a UA-only request is rejected; otherwise setting the secret
+  // would paradoxically weaken the endpoint.
+  if (!secret && isVercelCronUA) {
+    console.warn(
+      '[cron/daily-brief] authorized on User-Agent alone because CRON_SECRET is unset. ' +
+        'This header is spoofable — set CRON_SECRET in Vercel and redeploy.'
+    );
+    return { authorized: true, via: 'vercel-cron-user-agent (weak)' };
   }
 
   // No secret configured and no Vercel signal: this is a manual hit.
