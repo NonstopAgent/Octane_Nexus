@@ -196,7 +196,7 @@ export default function MonitoringPage() {
               </p>
             </div>
             <Link
-              href="/dashboard/memory"
+              href="/dashboard/settings"
               className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:border-amber-500/40 hover:text-amber-400"
             >
               View in Memory
@@ -205,7 +205,7 @@ export default function MonitoringPage() {
           </div>
           <p className="text-sm text-slate-500">
             Detailed per-video analytics, view counts, and performance patterns are available on the{' '}
-            <Link href="/dashboard/memory" className="text-amber-400 hover:underline">
+            <Link href="/dashboard/settings" className="text-amber-400 hover:underline">
               Memory page
             </Link>
             . The Daily Brief surfaces the key patterns automatically every morning.

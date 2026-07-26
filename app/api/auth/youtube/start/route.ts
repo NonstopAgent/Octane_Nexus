@@ -19,7 +19,7 @@ export async function GET(req: Request) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
       return NextResponse.redirect(
-        new URL('/login?returnTo=/dashboard/memory', origin)
+        new URL('/login?returnTo=/dashboard/settings', origin)
       );
     }
 
@@ -49,7 +49,7 @@ export async function GET(req: Request) {
   } catch (err) {
     console.error('youtube/start error:', err);
     return NextResponse.redirect(
-      new URL('/dashboard/memory?youtube=error&reason=config', origin)
+      new URL('/dashboard/settings?youtube=error&reason=config', origin)
     );
   }
 }

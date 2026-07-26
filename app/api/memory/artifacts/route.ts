@@ -115,3 +115,42 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Internal error' }, { status: 500 });
   }
 }
+
+/**
+ * DELETE /api/memory/artifacts?id=<uuid>
+ *
+ * Needed because memory is now captured automatically. Anything stored
+ * without the user asking has to be removable by the user, or it is not
+ * memory, it is surveillance.
+ */
+export async function DELETE(req: NextRequest) {
+  try {
+    const supabase = createServerSupabaseClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const id = new URL(req.url).searchParams.get('id');
+    if (!id) {
+      return NextResponse.json({ error: 'id is required' }, { status: 400 });
+    }
+
+    // Scoped to the caller so one user can never delete another's memory.
+    const { error } = await supabase
+      .from('creator_artifacts')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', user.id);
+
+    if (error) {
+      console.error('memory/artifacts DELETE failed:', error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ deleted: true });
+  } catch (err) {
+    console.error('memory/artifacts DELETE error:', err);
+    return NextResponse.json({ error: 'Internal error' }, { status: 500 });
+  }
+}

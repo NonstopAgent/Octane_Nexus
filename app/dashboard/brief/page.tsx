@@ -362,7 +362,7 @@ export default function DailyBriefPage() {
             <span className="text-emerald-400">Your YouTube is connected ✓</span>
           ) : (
             <>
-              <Link href="/dashboard/memory" className="text-amber-400 hover:underline">
+              <Link href="/dashboard/settings" className="text-amber-400 hover:underline">
                 Connect YouTube
               </Link>{' '}
               to import your own performance data.
@@ -515,7 +515,7 @@ export default function DailyBriefPage() {
                 {youtubeConnected ? (
                   <span className="text-emerald-400">YouTube connected ✓</span>
                 ) : (
-                  <Link href="/dashboard/memory" className="text-amber-400 hover:underline">
+                  <Link href="/dashboard/settings" className="text-amber-400 hover:underline">
                     Connect YouTube
                   </Link>
                 )}{' '}

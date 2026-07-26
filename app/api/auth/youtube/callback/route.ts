@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
   // Use the request's own origin — always correct in production, never falls
   // back to localhost. NEXT_PUBLIC_SITE_URL was unreliable across environments.
   const origin = new URL(req.url).origin;
-  const memoryUrl = new URL('/dashboard/memory', origin);
+  const settingsUrl = new URL('/dashboard/settings', origin);
 
   try {
     const { searchParams } = new URL(req.url);
@@ -29,15 +29,15 @@ export async function GET(req: NextRequest) {
 
     // User denied consent or Google returned an error
     if (error) {
-      memoryUrl.searchParams.set('youtube', 'error');
-      memoryUrl.searchParams.set('reason', error);
-      return NextResponse.redirect(memoryUrl);
+      settingsUrl.searchParams.set('youtube', 'error');
+      settingsUrl.searchParams.set('reason', error);
+      return NextResponse.redirect(settingsUrl);
     }
 
     if (!code || !state) {
-      memoryUrl.searchParams.set('youtube', 'error');
-      memoryUrl.searchParams.set('reason', 'missing_params');
-      return NextResponse.redirect(memoryUrl);
+      settingsUrl.searchParams.set('youtube', 'error');
+      settingsUrl.searchParams.set('reason', 'missing_params');
+      return NextResponse.redirect(settingsUrl);
     }
 
     // Verify CSRF state against the cookie we set in /start
@@ -46,14 +46,14 @@ export async function GET(req: NextRequest) {
     const userId = cookieStore.get('youtube_oauth_user')?.value;
 
     if (!cookieState || cookieState !== state) {
-      memoryUrl.searchParams.set('youtube', 'error');
-      memoryUrl.searchParams.set('reason', 'state_mismatch');
-      return NextResponse.redirect(memoryUrl);
+      settingsUrl.searchParams.set('youtube', 'error');
+      settingsUrl.searchParams.set('reason', 'state_mismatch');
+      return NextResponse.redirect(settingsUrl);
     }
     if (!userId) {
-      memoryUrl.searchParams.set('youtube', 'error');
-      memoryUrl.searchParams.set('reason', 'no_user');
-      return NextResponse.redirect(memoryUrl);
+      settingsUrl.searchParams.set('youtube', 'error');
+      settingsUrl.searchParams.set('reason', 'no_user');
+      return NextResponse.redirect(settingsUrl);
     }
 
     // Exchange the auth code for access + refresh tokens
@@ -62,9 +62,9 @@ export async function GET(req: NextRequest) {
     // Fetch the user's YouTube channel so we have display data
     const channel = await fetchYouTubeChannel(tokens.access_token);
     if (!channel) {
-      memoryUrl.searchParams.set('youtube', 'error');
-      memoryUrl.searchParams.set('reason', 'no_channel');
-      return NextResponse.redirect(memoryUrl);
+      settingsUrl.searchParams.set('youtube', 'error');
+      settingsUrl.searchParams.set('reason', 'no_channel');
+      return NextResponse.redirect(settingsUrl);
     }
 
     // Store the connection via service role (tokens are sensitive — RLS-only writes)
@@ -91,9 +91,9 @@ export async function GET(req: NextRequest) {
 
     if (upsertError) {
       console.error('youtube/callback upsert error:', upsertError.message);
-      memoryUrl.searchParams.set('youtube', 'error');
-      memoryUrl.searchParams.set('reason', 'db_error');
-      return NextResponse.redirect(memoryUrl);
+      settingsUrl.searchParams.set('youtube', 'error');
+      settingsUrl.searchParams.set('reason', 'db_error');
+      return NextResponse.redirect(settingsUrl);
     }
 
     // Clear the CSRF cookies
@@ -101,15 +101,15 @@ export async function GET(req: NextRequest) {
     cookieStore.delete('youtube_oauth_user');
 
     // Redirect to memory page with success flag
-    memoryUrl.searchParams.set('youtube', 'connected');
-    return NextResponse.redirect(memoryUrl);
+    settingsUrl.searchParams.set('youtube', 'connected');
+    return NextResponse.redirect(settingsUrl);
   } catch (err) {
     console.error('youtube/callback error:', err);
-    memoryUrl.searchParams.set('youtube', 'error');
-    memoryUrl.searchParams.set(
+    settingsUrl.searchParams.set('youtube', 'error');
+    settingsUrl.searchParams.set(
       'reason',
       err instanceof Error ? err.message.slice(0, 100) : 'unknown'
     );
-    return NextResponse.redirect(memoryUrl);
+    return NextResponse.redirect(settingsUrl);
   }
 }

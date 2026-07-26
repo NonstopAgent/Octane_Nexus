@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { UserCircle, BookOpen, Settings, MessageCircle, TrendingUp, Brain, Sunrise, Mic } from 'lucide-react';
+import { UserCircle, BookOpen, Settings, MessageCircle, TrendingUp, Sunrise, Mic } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { getCalibrationLevel } from '@/lib/gemini';
 import CreatorDailyBar from '@/components/dashboard/CreatorDailyBar';
@@ -81,6 +81,9 @@ export default function DashboardLayout({
   }, []);
 
   // Strategic pivot: Daily Brief is now the morning landing surface.
+  // Memory is no longer a destination: capture is automatic and the
+  // controls live in Settings. A tab you had to visit and fill in by
+  // hand meant nothing ever got remembered.
   // Cut Post Lab, Production, Schedule — they duplicated Notion/ClickUp
   // without adding creator-specific value. Keep the surfaces that feed
   // or consume the Daily Brief: Brief → Chat → Memory → Trends → Library.
@@ -88,7 +91,6 @@ export default function DashboardLayout({
     { href: '/dashboard/brief', label: 'Daily Brief', icon: Sunrise, external: false },
     { href: '/dashboard/chat', label: 'Nexus Chat', icon: MessageCircle, external: false },
     { href: '/dashboard/hook-lab', label: 'Hook Lab', icon: Mic, external: false },
-    { href: '/dashboard/memory', label: 'Memory', icon: Brain, external: false },
     { href: '/dashboard/trends', label: 'Trends', icon: TrendingUp, external: false },
     { href: '/dashboard/library', label: 'Library', icon: BookOpen, external: false },
     { href: '/identity', label: 'Identity', icon: UserCircle, external: false },

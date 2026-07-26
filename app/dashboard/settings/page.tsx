@@ -5,6 +5,8 @@ import { UserCircle, Mail, LogOut, Youtube, Shield, ExternalLink, Loader2 } from
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabaseClient';
 import DashboardPageHeader from '@/components/dashboard/DashboardPageHeader';
+import MemorySettings from '@/components/dashboard/MemorySettings';
+import YouTubeConnection from '@/components/dashboard/YouTubeConnection';
 import Link from 'next/link';
 
 type Profile = {
@@ -52,14 +54,6 @@ export default function SettingsPage() {
     }
   }
 
-  function handleConnectYouTube() {
-    window.location.href = '/api/auth/youtube/start';
-  }
-
-  const ytLinked =
-    profile?.linked_accounts &&
-    typeof profile.linked_accounts === 'object' &&
-    'youtube' in profile.linked_accounts;
 
   return (
     <div className="space-y-6 pb-12">
@@ -107,7 +101,11 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          {/* Connected accounts */}
+          {/* Connected accounts.
+              Uses the real YouTubeConnection component rather than a static
+              status row. The previous version could only say "Connected" and
+              then punted to the Memory tab for Sync and Disconnect — and that
+              tab no longer exists. */}
           <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6">
             <div className="mb-5 flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-500/10">
@@ -116,35 +114,11 @@ export default function SettingsPage() {
               <div>
                 <h2 className="text-lg font-semibold text-slate-50">Connected accounts</h2>
                 <p className="text-xs text-slate-500">
-                  YouTube connection powers your channel patterns and brief personalization.
+                  YouTube powers your channel patterns and brief personalization.
                 </p>
               </div>
             </div>
-            <div className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-900/50 px-4 py-3">
-              <div className="flex items-center gap-3">
-                <Youtube className="h-5 w-5 text-rose-400" />
-                <div>
-                  <p className="text-sm font-semibold text-slate-200">YouTube</p>
-                  <p className="text-xs text-slate-500">{ytLinked ? 'Connected' : 'Not connected'}</p>
-                </div>
-              </div>
-              {ytLinked ? (
-                <Link
-                  href="/dashboard/memory"
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-transparent px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:border-amber-500/40 hover:text-amber-400"
-                >
-                  Manage in Memory <ExternalLink className="h-3 w-3" />
-                </Link>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleConnectYouTube}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-xs font-semibold text-amber-400 transition hover:bg-amber-500/20"
-                >
-                  Connect YouTube
-                </button>
-              )}
-            </div>
+            <YouTubeConnection />
           </div>
 
           {/* Plan */}
@@ -168,6 +142,8 @@ export default function SettingsPage() {
               </Link>
             </div>
           </div>
+
+          <MemorySettings />
 
           {/* Sign out */}
           <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6">

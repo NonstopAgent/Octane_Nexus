@@ -32,7 +32,11 @@ export type ArtifactSource =
   | 'imported_tiktok'
   | 'imported_instagram'
   | 'chat_save'
-  | 'production_board';
+  | 'production_board'
+  // Captured without the user asking, the way ChatGPT and Claude remember.
+  // Anything with this source was never explicitly saved, so the UI must
+  // make it easy to see and delete.
+  | 'auto_capture';
 
 export type CreatorArtifact = {
   id: string;
