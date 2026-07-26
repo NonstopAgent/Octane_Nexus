@@ -1,22 +1,16 @@
 import { cookies } from 'next/headers';
 import { createServerSupabaseClient, createServiceRoleClient } from '@/lib/supabaseServer';
 import { getEffectiveUserIdFromCookieStore } from '@/lib/authServer';
-import { fetchCreatorVideos } from '@/lib/youtube';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowRight, Download } from 'lucide-react';
-import ToolCard, { type CreatorTool } from '@/components/dashboard/ToolCard';
-import ScrollableRow from '@/components/ui/ScrollableRow';
 import Playbook from '@/components/dashboard/Playbook';
 import LibraryClientSection from '@/components/dashboard/LibraryClientSection';
 import LibraryReadySection from '@/components/dashboard/LibraryReadySection';
 import TacticsGrid from '@/components/dashboard/TacticsGrid';
-import VideoInspirationGrid from '@/components/dashboard/VideoInspirationGrid';
-import SectionHeader from '@/components/ui/SectionHeader';
 import StatusChip from '@/components/ui/StatusChip';
 import DashboardPageHeader from '@/components/dashboard/DashboardPageHeader';
 import DemoNudge from '@/components/ui/DemoNudge';
-import { BookOpen } from 'lucide-react';
+import { BookOpen, Download } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,44 +38,21 @@ export default async function LibraryPage() {
   const userNiche = (profile?.niche || 'content creation').toLowerCase().trim();
   const profileImageUrl = profile?.profile_image_url ?? null;
 
-  // 2. Smart Tools: fetch all creator_tools and filter
-  const { data: allTools } = await supabase
-    .from('creator_tools')
-    .select('*')
-    .order('name');
-
-  /** Normalize DB row to CreatorTool (tags: string[], is_trending: boolean) */
-  const toCreatorTool = (row: Record<string, unknown>): CreatorTool => ({
-    id: String(row.id ?? ''),
-    name: String(row.name ?? ''),
-    description: row.description != null ? String(row.description) : null,
-    url: row.url != null ? String(row.url) : null,
-    icon_url: row.icon_url != null ? String(row.icon_url) : null,
-    category: String(row.category ?? ''),
-    tags: Array.isArray(row.tags) ? (row.tags as string[]) : [],
-    is_trending: Boolean(row.is_trending),
-  });
-
-  const recommendedTools = (allTools || [])
-    .filter(
-      (t: Record<string, unknown>) =>
-        (Array.isArray(t.tags) && (t.tags.includes(userNiche) || t.tags.includes('general')))
-    )
-    .map(toCreatorTool);
-
-  const trendingTools = (allTools || [])
-    .filter((t: Record<string, unknown>) => t.is_trending === true)
-    .map(toCreatorTool);
+  // Removed: the creator_tools directory.
+  //
+  // Two sections ("Recommended for You" and "Trending Now") rendered the
+  // same table, which is why the same apps appeared twice on one screen.
+  // Underneath, the table was five generic tools seeded twice - CapCut,
+  // ChatGPT, Notion, OBS and TradingView - with no niche filtering that
+  // worked, so an Elden Ring channel was being recommended stock-charting
+  // software. A static list of apps every creator already knows about is
+  // not what a YouTube intelligence product is for.
 
   // 3. Check if user has any saved blueprints
   const { count: blueprintCount } = await db
     .from('saved_blueprints')
     .select('*', { count: 'exact', head: true })
     .eq('user_id', effectiveUserId);
-
-  // 4. Real videos from YouTube
-  const videoQuery = `how to make viral ${userNiche} videos 2026`;
-  const videos = await fetchCreatorVideos(videoQuery);
 
   return (
     <div className="space-y-6">
@@ -122,7 +93,7 @@ export default async function LibraryPage() {
         actions={<StatusChip variant="live" pulse />}
       />
 
-      {(blueprintCount ?? 0) === 0 && recommendedTools.length === 0 && (
+      {(blueprintCount ?? 0) === 0 && (
         <DemoNudge />
       )}
 
@@ -135,42 +106,6 @@ export default async function LibraryPage() {
       {/* Viral Playbooks (Tactics Grid) */}
       <TacticsGrid niche={userNiche} />
 
-      {/* Recommended for You */}
-      {recommendedTools.length > 0 && (
-        <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6 transition duration-200 hover:border-slate-700">
-          <div className="space-y-4">
-            <SectionHeader
-              title="Recommended for You"
-              subtitle={`${userNiche} & general`}
-            />
-            <ScrollableRow>
-              {recommendedTools.map((tool) => (
-                <ToolCard key={tool.id} tool={tool} />
-              ))}
-            </ScrollableRow>
-          </div>
-        </div>
-      )}
-
-      {/* Trending Now */}
-      {trendingTools.length > 0 && (
-        <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6">
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-semibold text-slate-50">
-                Trending Now
-              </h2>
-              <span className="text-xs text-amber-400">🔥 Hot</span>
-            </div>
-            <ScrollableRow>
-              {trendingTools.map((tool) => (
-                <ToolCard key={tool.id} tool={tool} />
-              ))}
-            </ScrollableRow>
-          </div>
-        </div>
-      )}
-
       {/* Playbook */}
       <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-6 space-y-4">
         <div>
@@ -182,28 +117,6 @@ export default async function LibraryPage() {
         <Playbook />
       </div>
 
-      {/* Real Videos from YouTube */}
-      <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6 transition duration-200 hover:border-slate-700">
-        <div className="space-y-4">
-          <SectionHeader
-            title="Video Inspiration"
-            action={
-              <a
-                href="https://www.youtube.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-sm text-amber-400 hover:text-amber-300 transition focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2 focus:ring-offset-slate-950 rounded"
-                aria-label="View all on YouTube"
-              >
-                View All
-                <ArrowRight className="h-4 w-4" />
-              </a>
-            }
-          />
-
-          <VideoInspirationGrid videos={videos} />
-        </div>
-      </div>
     </div>
   );
 }
