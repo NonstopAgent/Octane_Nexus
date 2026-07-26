@@ -25,6 +25,8 @@ type TrackedChannel = {
   channel_handle: string | null;
   thumbnail_url: string | null;
   recent_videos: unknown;
+  subscriber_count?: number | null;
+  last_synced_at?: string | null;
 };
 
 type SearchChannel = {
@@ -103,6 +105,25 @@ function OutlierBadge({ tier, score }: { tier?: string; score?: number }) {
 }
 
 /** Format a subscriber count as "1.71M subs" / "532K subs" / "412 subs". */
+/**
+ * Short label for how current a tracked channel's cached uploads are.
+ *
+ * This exists because all three of the first tracked channels had
+ * last_synced_at = NULL and cached videos three to fifteen months old, and
+ * nothing in the UI said so. The brief then reported "no competitor signals"
+ * with no way to tell that the cause was stale data rather than a quiet niche.
+ */
+function channelFreshness(lastSyncedAt?: string | null): string {
+  if (!lastSyncedAt) return 'never synced';
+  const t = new Date(lastSyncedAt).getTime();
+  if (!Number.isFinite(t)) return 'never synced';
+  const days = Math.floor((Date.now() - t) / 86_400_000);
+  if (days <= 0) return 'synced today';
+  if (days === 1) return 'synced yesterday';
+  if (days < 30) return `synced ${days}d ago`;
+  return `stale — ${Math.floor(days / 30)}mo old`;
+}
+
 function formatSubs(n: number): string {
   if (!n || n < 1) return '0 subs';
   if (n >= 1_000_000) {
@@ -485,7 +506,22 @@ export default function DailyBriefPage() {
                   ) : (
                     <div className="h-9 w-9 flex-shrink-0 rounded-lg bg-slate-800" />
                   )}
-                  <span className="truncate font-medium text-slate-200">{ch.channel_title}</span>
+                  <div className="min-w-0">
+                    <span className="block truncate font-medium text-slate-200">
+                      {ch.channel_title}
+                    </span>
+                    {/* Handle and subscriber count are shown because channel
+                        titles are not unique. Two channels called "Ryan Trahan"
+                        - one of them an impersonator with 15-month-old uploads -
+                        were indistinguishable when this row showed only a name. */}
+                    <span className="block truncate text-xs text-slate-500">
+                      {ch.channel_handle ? `@${ch.channel_handle.replace(/^@/, '')}` : ch.youtube_channel_id}
+                      {typeof ch.subscriber_count === 'number' && ch.subscriber_count > 0
+                        ? ` · ${formatSubs(ch.subscriber_count)}`
+                        : ''}
+                      {channelFreshness(ch.last_synced_at) ? ` · ${channelFreshness(ch.last_synced_at)}` : ''}
+                    </span>
+                  </div>
                 </div>
                 <button
                   type="button"
