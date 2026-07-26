@@ -333,10 +333,19 @@ export async function GET(req: NextRequest) {
   // visibly different from one that actually worked.
   if (userIds.length === 0) {
     console.warn('[cron/daily-brief] no eligible users — nobody has imported YouTube videos or tracked a channel');
-  } else if (generated === 0) {
-    console.error(`[cron/daily-brief] ran for ${userIds.length} user(s) but generated 0 briefs`, summary);
+  } else if (generated === 0 && reused === 0) {
+    // Nothing generated AND nothing reused means every user was skipped —
+    // that is a real failure worth an error.
+    console.error(`[cron/daily-brief] ran for ${userIds.length} user(s) and produced nothing`, summary);
   } else {
-    console.info(`[cron/daily-brief] generated ${generated}/${userIds.length} briefs`, summary);
+    // Reusing an existing brief is the idempotency guard working as designed,
+    // not a failure. The first version logged this as an error, which would
+    // have cried wolf every single day a user generated their own brief
+    // before the cron fired.
+    console.info(
+      `[cron/daily-brief] ${generated} generated, ${reused} reused across ${userIds.length} user(s)`,
+      summary
+    );
   }
 
   return NextResponse.json(summary);
