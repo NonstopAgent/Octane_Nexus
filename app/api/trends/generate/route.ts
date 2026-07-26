@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabaseServer';
 import { callGeminiModel, extractGeminiText } from '@/lib/geminiModels';
+import { detectTrends, type TrendInputVideo, type TrendCluster } from '@/lib/trendDetection';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
@@ -13,17 +14,22 @@ type CachedVideo = {
   thumbnailUrl?: string;
 };
 
-type TrendingVideo = {
-  id: string;                // YouTube video id
-  title: string;
-  viewCount: string;         // formatted display string (e.g. "1.2M")
-  viewCountRaw: number;      // actual number for sorting
-  channelTitle: string;
-  channelHandle: string | null;
-  publishedAt: string;
-  thumbnailUrl: string | null;
-  youtubeUrl: string;        // real youtube link for click-through
-  whyItWorked: string;       // Gemini analysis; empty string if unavailable
+export type TrendResponseCluster = {
+  topic: string;
+  channels: string[];
+  channelCount: number;
+  windowDays: number;
+  totalViews: number;
+  whyItMatters: string; // Gemini analysis; '' when unavailable
+  videos: Array<{
+    id: string;
+    title: string;
+    channelTitle: string;
+    viewCount: string;
+    publishedAt: string;
+    thumbnailUrl: string | null;
+    youtubeUrl: string;
+  }>;
 };
 
 function formatViews(n: number): string {
@@ -34,10 +40,19 @@ function formatViews(n: number): string {
 
 /**
  * GET /api/trends/generate
- * Returns the user's top-performing competitor videos from tracked_channels,
- * enriched with a one-sentence "why it worked" analysis from Gemini.
  *
- * If the user has no tracked channels yet, returns { videos: [], needsChannels: true }.
+ * Returns TRENDS — topics that multiple tracked channels covered inside the
+ * same short window — not a view-count leaderboard.
+ *
+ * The previous version returned the top 8 competitor videos by raw views,
+ * which surfaced the same evergreen uploads every day and told the creator
+ * nothing they could act on. See lib/trendDetection for the reasoning.
+ *
+ * Response states, all explicit so the UI never has to guess:
+ *   needsChannels  - no tracked channels yet
+ *   needsRefresh   - channels tracked but nothing cached
+ *   staleData      - cached videos exist but all are older than the window
+ *   trends: []     - everything fresh, genuinely no cross-channel overlap
  */
 export async function GET() {
   try {
@@ -47,18 +62,16 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Niche for context/display
     const { data: profile } = await supabase
       .from('profiles')
-      .select('niche, vibe')
+      .select('niche')
       .eq('id', user.id)
       .maybeSingle();
     const niche = profile?.niche || 'content creation';
 
-    // Pull tracked channels + their cached recent videos
     const { data: channels, error: chanErr } = await supabase
       .from('tracked_channels')
-      .select('channel_title, channel_handle, thumbnail_url, recent_videos')
+      .select('channel_title, recent_videos, last_synced_at')
       .eq('user_id', user.id);
 
     if (chanErr) {
@@ -67,124 +80,159 @@ export async function GET() {
     }
 
     if (!channels || channels.length === 0) {
-      return NextResponse.json({
-        videos: [],
-        niche,
-        needsChannels: true,
-      });
+      return NextResponse.json({ trends: [], niche, needsChannels: true });
     }
 
-    // Flatten videos across channels
-    const all: TrendingVideo[] = [];
+    const all: TrendInputVideo[] = [];
     for (const ch of channels) {
       const channelTitle = (ch.channel_title as string) || 'Unknown channel';
-      const channelHandle = (ch.channel_handle as string) || null;
       const videos = Array.isArray(ch.recent_videos) ? (ch.recent_videos as CachedVideo[]) : [];
       for (const v of videos) {
         if (!v?.id || !v?.title) continue;
-        const viewCount = Number(v.viewCount) || 0;
         all.push({
           id: v.id,
           title: v.title,
-          viewCount: formatViews(viewCount),
-          viewCountRaw: viewCount,
-          channelTitle,
-          channelHandle,
+          channel: channelTitle,
+          viewCount: Number(v.viewCount) || 0,
           publishedAt: v.publishedAt || '',
           thumbnailUrl: v.thumbnailUrl || null,
-          youtubeUrl: `https://www.youtube.com/watch?v=${v.id}`,
-          whyItWorked: '',
         });
       }
     }
 
     if (all.length === 0) {
       return NextResponse.json({
-        videos: [],
+        trends: [],
         niche,
         needsChannels: false,
         needsRefresh: true,
       });
     }
 
-    // Sort by real view count, take top 8
-    all.sort((a, b) => b.viewCountRaw - a.viewCountRaw);
-    const top = all.slice(0, 8);
+    const WINDOW_DAYS = 14;
+    const clusters = detectTrends(all, { windowDays: WINDOW_DAYS, minChannels: 2, limit: 6 });
 
-    // Optional Gemini enrichment: one call for all titles → "why it worked" each
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (apiKey) {
-      try {
-        const enriched = await enrichWithAnalysis(apiKey, top, niche);
-        return NextResponse.json({ videos: enriched, niche, needsChannels: false });
-      } catch (err) {
-        console.warn('trends/generate: Gemini enrichment failed, returning raw data', err);
-      }
+    // Distinguish "nothing is trending" from "all our data is months old".
+    // Those look identical to a user but mean completely different things:
+    // the first is a real answer, the second is a broken sync.
+    const cutoff = Date.now() - WINDOW_DAYS * 24 * 60 * 60 * 1000;
+    const freshCount = all.filter((v) => {
+      const t = new Date(v.publishedAt).getTime();
+      return Number.isFinite(t) && t >= cutoff;
+    }).length;
+
+    const newestSync = channels
+      .map((c) => (c.last_synced_at ? new Date(c.last_synced_at as string).getTime() : 0))
+      .reduce((a, b) => Math.max(a, b), 0);
+
+    const response = {
+      niche,
+      needsChannels: false,
+      windowDays: WINDOW_DAYS,
+      channelsTracked: channels.length,
+      videosConsidered: all.length,
+      freshVideos: freshCount,
+      staleData: freshCount === 0,
+      lastSyncedAt: newestSync ? new Date(newestSync).toISOString() : null,
+      trends: [] as TrendResponseCluster[],
+    };
+
+    if (clusters.length === 0) {
+      return NextResponse.json(response);
     }
 
-    // Gemini unavailable or failed — return real video data without analysis
-    return NextResponse.json({ videos: top, niche, needsChannels: false });
+    const apiKey = process.env.GEMINI_API_KEY;
+    response.trends = apiKey
+      ? await explainTrends(apiKey, clusters, niche)
+      // Explicit arrow: passing toResponseCluster directly would feed the
+      // array index into whyItMatters as the second argument.
+      : clusters.map((c) => toResponseCluster(c));
+
+    return NextResponse.json(response);
   } catch (err) {
     console.error('trends/generate error:', err);
     return NextResponse.json({ error: 'Internal error' }, { status: 500 });
   }
 }
 
+function toResponseCluster(c: TrendCluster, whyItMatters = ''): TrendResponseCluster {
+  return {
+    topic: c.topic,
+    channels: c.channels,
+    channelCount: c.channelCount,
+    windowDays: c.windowDays,
+    totalViews: c.totalViews,
+    whyItMatters,
+    videos: c.videos.map((v) => ({
+      id: v.id,
+      title: v.title,
+      channelTitle: v.channel,
+      viewCount: formatViews(v.viewCount),
+      publishedAt: v.publishedAt,
+      thumbnailUrl: v.thumbnailUrl ?? null,
+      youtubeUrl: `https://www.youtube.com/watch?v=${v.id}`,
+    })),
+  };
+}
+
 /**
- * Send the full list of titles in ONE Gemini call and parse back analyses.
- * We ask for a JSON array indexed the same order as the input so we can match
- * them back up without needing to parse per-video nuance.
+ * One Gemini call for all clusters. The model explains why the convergence
+ * matters and what angle is still open — it does NOT decide what is trending.
+ * The clustering is deterministic; the AI only interprets it.
  */
-async function enrichWithAnalysis(
+async function explainTrends(
   apiKey: string,
-  videos: TrendingVideo[],
+  clusters: TrendCluster[],
   niche: string
-): Promise<TrendingVideo[]> {
-  const titlesBlock = videos
+): Promise<TrendResponseCluster[]> {
+  const block = clusters
     .map(
-      (v, i) =>
-        `${i + 1}. [${v.channelTitle}] "${v.title}" — ${v.viewCount} views`
+      (c, i) =>
+        `${i + 1}. Topic "${c.topic}" — covered by ${c.channelCount} channels (${c.channels.join(
+          ', '
+        )}) within ${c.windowDays} days.\n   Titles: ${c.videos
+          .map((v) => `"${v.title}"`)
+          .join('; ')}`
     )
     .join('\n');
 
-  const prompt = `You are a YouTube growth analyst. Below are real competitor videos in the niche "${niche}", sorted by view count. For EACH one, write ONE sentence (max 20 words) explaining the specific hook, format, or pattern that likely drove those views. Be tactical and specific — reference the actual title words. Avoid generic advice like "great hook" or "strong title".
+  const prompt = `You are a YouTube strategist advising a creator in the niche "${niche}".
 
-Videos:
-${titlesBlock}
+Below are topics that MULTIPLE competitor channels independently covered inside the same short window. That convergence is the signal — several creators betting on the same subject at once.
 
-Respond with ONLY a JSON array of ${videos.length} strings, in the same order as the input. No markdown, no commentary.
-Example: ["Contrarian take on X reframes the default assumption", "Specific number anchors credibility ...", ...]`;
+${block}
 
-  const res = await callGeminiModel(apiKey, {
-    contents: [{ parts: [{ text: prompt }] }],
-    generationConfig: {
-      temperature: 0.6,
-      maxOutputTokens: 800,
-      responseMimeType: 'application/json',
-      thinkingConfig: { thinkingBudget: 0 },
-    },
-  });
+For EACH topic, write ONE sentence (max 25 words) telling the creator why this convergence matters and what angle is still unclaimed. Be specific to the actual titles. Do not say "this is trending" — they can see that. Tell them what to do about it.
 
-  if (!res.ok) {
-    throw new Error(`Gemini returned ${res.status}: ${res.error}`);
-  }
+Respond with ONLY a JSON array of ${clusters.length} strings, in the same order. No markdown.`;
 
-  const text = extractGeminiText(res.data);
-  const cleaned = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
-
-  let analyses: unknown;
   try {
-    analyses = JSON.parse(cleaned);
-  } catch {
-    throw new Error('Gemini returned non-JSON');
-  }
+    const res = await callGeminiModel(apiKey, {
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: {
+        temperature: 0.6,
+        maxOutputTokens: 700,
+        responseMimeType: 'application/json',
+        thinkingConfig: { thinkingBudget: 0 },
+      },
+    });
 
-  if (!Array.isArray(analyses)) {
-    throw new Error('Gemini returned non-array');
-  }
+    if (!res.ok) throw new Error(res.error || `Gemini ${res.status}`);
 
-  return videos.map((v, i) => ({
-    ...v,
-    whyItWorked: typeof analyses[i] === 'string' ? (analyses[i] as string) : '',
-  }));
+    const cleaned = extractGeminiText(res.data)
+      .replace(/```json\s*/g, '')
+      .replace(/```\s*/g, '')
+      .trim();
+    const parsed: unknown = JSON.parse(cleaned);
+    if (!Array.isArray(parsed)) throw new Error('Gemini returned non-array');
+
+    return clusters.map((c, i) =>
+      toResponseCluster(c, typeof parsed[i] === 'string' ? (parsed[i] as string) : '')
+    );
+  } catch (err) {
+    // Degrade to the deterministic clusters. The trend itself is real maths;
+    // only the commentary is missing, so showing it is still correct.
+    console.warn('trends/generate: analysis unavailable, returning clusters only', err);
+    return clusters.map((c) => toResponseCluster(c));
+  }
 }
