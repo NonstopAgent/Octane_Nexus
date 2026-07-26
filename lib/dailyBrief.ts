@@ -5,8 +5,10 @@
  *
  *   LAYER 1 — Outlier Detection (deterministic math)
  *     Before the AI sees any competitor data, a statistical algorithm
- *     calculates each video's outlier score (views / channel median).
- *     Only videos performing 2.5x+ above their channel's baseline are
+ *     calculates each video's outlier score (views-per-hour / channel
+ *     median views-per-hour, so a fresh breakout outranks an old video
+ *     that merely accumulated views).
+ *     Only videos performing 2.5x+ above their channel's baseline pace are
  *     passed to Gemini. The AI is told the score and hook type — so it
  *     acts as an analyst, not a guesser.
  *
@@ -228,7 +230,7 @@ function buildBriefPrompt(
 
   const ownOutlierText = ownOutliers.length > 0
     ? ownOutliers.slice(0, 3).map((v) =>
-        `  - "${v.title}" — ${v.views.toLocaleString()} views (${v.outlierScore.toFixed(1)}x their own avg, hook type: ${v.hookType})`
+        `  - "${v.title}" — ${v.views.toLocaleString()} views (${v.outlierScore.toFixed(1)}x their own pace, hook type: ${v.hookType})`
       ).join('\n')
     : null;
 
@@ -260,7 +262,7 @@ ${recentVideosText}
 
 ${ownOutlierText ? `THEIR OWN OUTLIER VIDEOS (performing 2x+ above their average — these formats WORK for them):\n${ownOutlierText}\n` : ''}
 COMPETITOR OUTLIER VIDEOS (mathematically proven to be outperforming their channel's baseline):
-Note: ${outlierCount} outlier(s) detected. ${superOutlierCount > 0 ? `${superOutlierCount} are SUPER outliers (10x+ their channel avg).` : ''} These are NOT just popular videos — they are specifically over-performing relative to each channel's own average.
+Note: ${outlierCount} outlier(s) detected. ${superOutlierCount > 0 ? `${superOutlierCount} are SUPER outliers (10x+ their channel pace).` : ''} These are NOT just popular videos — scores are views-per-hour relative to each channel's own normal pace, so a brand-new video outperforming its channel's usual velocity ranks above an older video that merely accumulated more total views.
 ${outlierText}
 
 TASK: Generate a personalized morning brief with three sections. Be specific and reference actual data. NEVER give generic advice.

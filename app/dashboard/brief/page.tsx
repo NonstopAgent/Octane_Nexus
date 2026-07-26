@@ -578,7 +578,7 @@ export default function DailyBriefPage() {
                         {item.channel} · {item.view_count.toLocaleString()} views
                         {item.baseline_views ? (
                           <span className="text-slate-600">
-                            {' '}(channel avg: {item.baseline_views.toLocaleString()})
+                            {' '}(channel median: {item.baseline_views.toLocaleString()} views)
                           </span>
                         ) : null}
                         {' · '}

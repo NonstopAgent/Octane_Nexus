@@ -12,16 +12,47 @@
  * analyst, not a guesser.
  *
  * Algorithm:
- *   1. For each competitor channel, compute the MEDIAN view count of
- *      their last N videos (median is more robust than mean — one viral
+ *   1. For each competitor channel, compute the MEDIAN views-per-hour of
+ *      their recent videos (median is more robust than mean — one viral
  *      hit doesn't inflate the baseline).
- *   2. Calculate an outlier score: video.viewCount / channelMedian
+ *   2. Calculate an outlier score: video VPH / channel median VPH
  *   3. Flag any video with a score >= OUTLIER_THRESHOLD (default 2.5x)
  *      as an outlier worth studying.
  *   4. Classify outliers as STRONG (5x+) or STANDARD (2.5x–5x).
  *   5. Enrich each outlier with a hook_type classification based on
  *      title pattern analysis (curiosity gap, list, contrarian, etc.)
  *      so the AI can reference the pattern, not just the title.
+ *
+ * WHY VIEWS-PER-HOUR AND NOT RAW VIEWS
+ * ------------------------------------
+ * The original scoring was `viewCount / channelMedianViews`, which ignored
+ * how old each video was — the code computed ageInDays and then never used
+ * it in the score. Because views only accumulate, that systematically
+ * ranked old videos above new ones:
+ *
+ *   - A 28-day-old video at 3x the channel median scored 3.0x and shipped.
+ *   - A 12-hour-old video already pulling 5x the channel's normal *rate*
+ *     scored ~0.1x on raw views and was filtered out before the AI saw it.
+ *
+ * That is backwards for a product whose entire promise is telling a creator
+ * what is blowing up in their niche *this morning*. Normalizing by age
+ * measures velocity instead of accumulation, so a genuine breakout surfaces
+ * on day one rather than three weeks later.
+ *
+ * KNOWN LIMITATION (worth fixing once video_snapshots has history)
+ * ---------------------------------------------------------------
+ * Lifetime VPH is not a perfect correction. Real videos front-load their
+ * views and then plateau, so an old video's lifetime average VPH is dragged
+ * down by its long flat tail. Comparing a 2-day-old video's VPH against a
+ * 25-day-old video's VPH therefore tilts slightly toward the young one —
+ * the opposite of the old bias, but milder and in the direction the product
+ * actually wants.
+ *
+ * MIN_AGE_HOURS blunts the worst of it by refusing to extrapolate wild
+ * rates from videos that have barely been up. The real fix is to compare
+ * views-at-age-T against the channel's typical views-at-age-T, which needs
+ * the time series the video_snapshots table is designed to hold. Once that
+ * table has a few weeks of history, revisit this.
  */
 
 export type RawCompetitorVideo = {
@@ -34,15 +65,48 @@ export type RawCompetitorVideo = {
 };
 
 export type OutlierVideo = RawCompetitorVideo & {
-  channelMedian: number;
-  outlierScore: number;        // viewCount / channelMedian
+  channelMedian: number;       // median RAW views — kept for human display
+  channelMedianVph: number;    // median views-per-hour — the scoring baseline
+  viewsPerHour: number;        // this video's views-per-hour
+  outlierScore: number;        // viewsPerHour / channelMedianVph
   outlierTier: 'super' | 'strong' | 'standard';  // 10x+ / 5x+ / 2.5x+
   hookType: string;            // detected hook pattern
   ageInDays: number;           // how old the video is
 };
 
-// Minimum multiplier above channel median to be considered an outlier
+// Minimum multiplier above the channel's normal pace to count as an outlier
 const OUTLIER_THRESHOLD = 2.5;
+
+/**
+ * Treat any video younger than this as if it were exactly this old.
+ *
+ * Without a floor, a video posted 40 minutes ago with 300 views computes to
+ * 450 views/hour and lands as a "super outlier" off almost no signal. Twelve
+ * hours is long enough for a real breakout to separate from noise while
+ * still catching same-day movers — which matters, because this feeds a
+ * brief a creator reads in the morning about yesterday.
+ */
+const MIN_AGE_HOURS = 12;
+
+/**
+ * Ceiling on the reported multiplier.
+ *
+ * A channel whose median pace is near zero (a dormant channel that just
+ * posted) can otherwise produce scores in the thousands, which crowds out
+ * genuinely interesting videos in the prompt's top-8 and reads as broken.
+ */
+const MAX_OUTLIER_SCORE = 50;
+
+/** Views per hour, with young videos floored to avoid extrapolating noise. */
+function viewsPerHour(viewCount: number, publishedAt: string, now: number): number | null {
+  const publishedMs = new Date(publishedAt).getTime();
+  if (!Number.isFinite(publishedMs)) return null;
+
+  const ageHours = (now - publishedMs) / (60 * 60 * 1000);
+  if (ageHours < 0) return null; // scheduled/premiere with a future timestamp
+
+  return viewCount / Math.max(ageHours, MIN_AGE_HOURS);
+}
 
 /**
  * Calculate the median of an array of numbers.
@@ -144,20 +208,34 @@ export function detectOutliers(
     // Need at least 3 videos to establish a meaningful baseline
     if (channelVideos.length < 3) continue;
 
-    const viewCounts = channelVideos.map((v) => v.viewCount);
-    const channelMedian = median(viewCounts);
+    // Baseline is the channel's normal PACE, not its normal total.
+    const vphByVideo = new Map<string, number>();
+    for (const v of channelVideos) {
+      const vph = viewsPerHour(v.viewCount, v.publishedAt, now);
+      if (vph !== null) vphByVideo.set(v.id, vph);
+    }
 
-    // Avoid division by zero for brand-new channels with 0 views
-    if (channelMedian === 0) continue;
+    // A baseline built from one or two videos is noise, not a baseline.
+    if (vphByVideo.size < 3) continue;
+
+    const channelMedianVph = median([...vphByVideo.values()]);
+    const channelMedian = median(channelVideos.map((v) => v.viewCount));
+
+    // Dormant channel with no measurable pace — nothing to compare against.
+    if (channelMedianVph <= 0) continue;
 
     for (const v of channelVideos) {
       const publishedMs = new Date(v.publishedAt).getTime();
-      const ageInDays = Math.floor((now - publishedMs) / (24 * 60 * 60 * 1000));
+      if (!Number.isFinite(publishedMs)) continue;
 
       // Skip videos older than maxAgeDays
       if (now - publishedMs > maxAgeMs) continue;
 
-      const outlierScore = v.viewCount / channelMedian;
+      const vph = vphByVideo.get(v.id);
+      if (vph === undefined) continue;
+
+      const ageInDays = Math.floor((now - publishedMs) / (24 * 60 * 60 * 1000));
+      const outlierScore = Math.min(vph / channelMedianVph, MAX_OUTLIER_SCORE);
 
       if (outlierScore >= threshold) {
         const outlierTier: OutlierVideo['outlierTier'] =
@@ -168,6 +246,8 @@ export function detectOutliers(
         outliers.push({
           ...v,
           channelMedian,
+          channelMedianVph,
+          viewsPerHour: vph,
           outlierScore,
           outlierTier,
           hookType: classifyHookType(v.title),
@@ -201,14 +281,21 @@ export function formatOutliersForPrompt(outliers: OutlierVideo[]): string {
   return outliers
     .slice(0, 8) // Cap at 8 to keep prompt focused
     .map((v) => {
+      // Say "pace" rather than "avg": the score is a velocity multiple, and
+      // the AI is asked to explain WHY a video worked. Telling it the video
+      // did 4x the channel's normal *rate* is a different and more accurate
+      // claim than 4x its normal view count.
       const scoreLabel =
-        v.outlierTier === 'super'   ? `🔥 SUPER OUTLIER (${v.outlierScore.toFixed(1)}x channel avg)` :
-        v.outlierTier === 'strong'  ? `⚡ STRONG OUTLIER (${v.outlierScore.toFixed(1)}x channel avg)` :
-        `📈 OUTLIER (${v.outlierScore.toFixed(1)}x channel avg)`;
+        v.outlierTier === 'super'   ? `🔥 SUPER OUTLIER (${v.outlierScore.toFixed(1)}x channel pace)` :
+        v.outlierTier === 'strong'  ? `⚡ STRONG OUTLIER (${v.outlierScore.toFixed(1)}x channel pace)` :
+        `📈 OUTLIER (${v.outlierScore.toFixed(1)}x channel pace)`;
+
+      const pace = `${Math.round(v.viewsPerHour).toLocaleString()}/hr vs channel norm ${Math.round(v.channelMedianVph).toLocaleString()}/hr`;
 
       return [
         `  [${v.channel}] "${v.title}"`,
         `    ${scoreLabel} | ${v.viewCount.toLocaleString()} views | ${v.ageInDays}d ago`,
+        `    Pace: ${pace}`,
         `    Hook type: ${v.hookType} | Channel median: ${v.channelMedian.toLocaleString()} views`,
         `    Video ID: ${v.id}`,
       ].join('\n');
@@ -235,17 +322,41 @@ export function detectOwnOutliers(
 ): OwnOutlier[] {
   if (videos.length < 3) return [];
 
-  const viewCounts = videos.map((v) => v.views);
-  const ownMedian = median(viewCounts);
+  const now = Date.now();
+  const ownMedian = median(videos.map((v) => v.views));
   if (ownMedian === 0) return [];
 
+  // Same age-normalization as the competitor path — but gracefully degraded.
+  //
+  // gatherUserContext() reads posted_at out of a JSON performance blob and
+  // falls back to '' when it is missing, so a creator's imported library can
+  // legitimately arrive with no usable dates. Rather than return nothing in
+  // that case, fall back to the raw-views ratio: less accurate, but a stale
+  // signal beats an empty brief.
+  const vphByIndex = new Map<number, number>();
+  videos.forEach((v, i) => {
+    const vph = viewsPerHour(v.views, v.posted_at, now);
+    if (vph !== null) vphByIndex.set(i, vph);
+  });
+
+  const canUseVph = vphByIndex.size >= 3;
+  const ownMedianVph = canUseVph ? median([...vphByIndex.values()]) : 0;
+
   return videos
-    .filter((v) => v.views / ownMedian >= threshold)
-    .map((v) => ({
-      ...v,
-      ownMedian,
-      outlierScore: v.views / ownMedian,
-      hookType: classifyHookType(v.title),
-    }))
+    .map((v, i) => {
+      const vph = vphByIndex.get(i);
+      const score =
+        canUseVph && ownMedianVph > 0 && vph !== undefined
+          ? Math.min(vph / ownMedianVph, MAX_OUTLIER_SCORE)
+          : v.views / ownMedian;
+
+      return {
+        ...v,
+        ownMedian,
+        outlierScore: score,
+        hookType: classifyHookType(v.title),
+      };
+    })
+    .filter((v) => v.outlierScore >= threshold)
     .sort((a, b) => b.outlierScore - a.outlierScore);
 }
