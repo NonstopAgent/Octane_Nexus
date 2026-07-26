@@ -7,6 +7,7 @@ import {
   buildDemoProfileAnalyticsHistory,
   buildDemoInstagramPosts,
   buildDemoStyleTokens,
+  buildDemoCreatorArtifacts,
   getNextWeekIso,
 } from '@/lib/demo-seed';
 
@@ -125,15 +126,60 @@ export async function POST(req: NextRequest) {
       }, { onConflict: 'user_id' });
     }
 
+    // 5b) The creator's own YouTube library.
+    //
+    // This is the step that was missing. Without rows in creator_artifacts
+    // with source='imported_youtube', the Daily Brief's "your patterns"
+    // section and the entire performance chart stay empty no matter what
+    // else is seeded - which made demo mode useless for evaluating the
+    // current product.
+    await db
+      .from('creator_artifacts')
+      .delete()
+      .eq('user_id', userId)
+      .eq('source', 'imported_youtube')
+      .contains('metadata', { demo: true });
+
+    const artifactRows = buildDemoCreatorArtifacts(userId);
+    const { data: insertedArtifacts, error: artifactsErr } = await db
+      .from('creator_artifacts')
+      .insert(artifactRows)
+      .select('id');
+
+    if (artifactsErr) {
+      console.warn('Demo seed: creator_artifacts insert failed:', artifactsErr.message);
+    }
+    if (insertedArtifacts && insertedArtifacts.length > 0) {
+      await db.from('demo_seeded_ids').insert(
+        insertedArtifacts.map((r) => ({
+          user_id: userId,
+          table_name: 'creator_artifacts',
+          record_id: r.id,
+        }))
+      );
+    }
+
     // 6) Set Tradeview AI brand identity on profile (skip linked_accounts — demo never fakes connections)
     if (user) {
-      await db
+      // Only set a niche if the user has not chosen one. Seeding demo data
+      // used to overwrite it with 'ai trading & market insights' - the parent
+      // company's niche - which silently repointed an Elden Ring creator's
+      // entire brief at trading content.
+      const { data: existingProfile } = await db
         .from('profiles')
-        .update({
-          brand_vision: 'Tradeview AI — AI-powered trading insights',
-          niche: 'ai trading & market insights',
-        })
-        .eq('id', userId);
+        .select('niche')
+        .eq('id', userId)
+        .maybeSingle();
+
+      if (!existingProfile?.niche) {
+        await db
+          .from('profiles')
+          .update({
+            brand_vision: 'Tradeview AI — AI-powered trading insights',
+            niche: 'ai trading & market insights',
+          })
+          .eq('id', userId);
+      }
     }
 
     const count =
@@ -141,7 +187,8 @@ export async function POST(req: NextRequest) {
       blueprintRows.length +
       historyIds.length +
       (insertedIg?.length ?? 0) +
-      (insertedTokens?.length ?? 0);
+      (insertedTokens?.length ?? 0) +
+      (insertedArtifacts?.length ?? 0);
 
     return NextResponse.json({ success: true, count });
   } catch (e) {

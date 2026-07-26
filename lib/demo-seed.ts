@@ -271,3 +271,78 @@ export function buildDemoStyleTokens(userId: string): Array<Record<string, unkno
     is_default: i === 0,
   }));
 }
+
+/**
+ * Demo YouTube library — the creator's OWN videos.
+ * ===============================================
+ * Everything above seeds pre-pivot tables (content_posts, instagram_posts,
+ * profile_analytics_history). None of it reaches creator_artifacts, which is
+ * what the Daily Brief actually reads for "your patterns" and what the
+ * performance chart plots. So demo mode left the two most important surfaces
+ * of the current product completely empty.
+ *
+ * This fills that gap, and it matters for a specific reason: you cannot
+ * evaluate this product without a channel that has uploads. Someone building
+ * it, or a creator evaluating it before connecting their account, otherwise
+ * sees a permanently empty half.
+ *
+ * The distribution is deliberately realistic rather than flattering:
+ *   - a baseline cluster around 9-14k views
+ *   - two genuine outliers driven by hook type (question, tutorial-promise)
+ *   - two underperformers, because a channel with no failures teaches nothing
+ *   - published dates spread over ~5 months so views-per-hour has a real curve
+ *
+ * Every row carries metadata.demo = true and is tracked in demo_seeded_ids,
+ * so /api/demo/reset removes it cleanly.
+ */
+const DEMO_YOUTUBE_VIDEOS: Array<{
+  title: string;
+  views: number;
+  daysAgo: number;
+  hook: string;
+}> = [
+  { title: 'Why is nobody using this Elden Ring weapon?', views: 41200, daysAgo: 12, hook: 'question' },
+  { title: 'How to beat Malenia without summons (step by step)', views: 33800, daysAgo: 27, hook: 'tutorial-promise' },
+  { title: 'I tried the worst build in Elden Ring', views: 14100, daysAgo: 6, hook: 'story' },
+  { title: 'Every boss ranked by how much I hated it', views: 12900, daysAgo: 34, hook: 'list' },
+  { title: 'Colossal swords are still underrated', views: 11700, daysAgo: 48, hook: 'contrarian' },
+  { title: 'My first playthrough mistakes', views: 10400, daysAgo: 61, hook: 'story' },
+  { title: 'Testing every shield in the game', views: 9800, daysAgo: 75, hook: 'list' },
+  { title: 'The Radahn fight explained', views: 9100, daysAgo: 89, hook: 'general' },
+  { title: 'Sorcery build walkthrough', views: 8600, daysAgo: 104, hook: 'tutorial-promise' },
+  { title: 'Thoughts on the new patch', views: 4200, daysAgo: 19, hook: 'general' },
+  { title: 'Casual stream highlights', views: 3100, daysAgo: 41, hook: 'general' },
+  { title: 'Channel update', views: 2400, daysAgo: 68, hook: 'general' },
+];
+
+export function buildDemoCreatorArtifacts(userId: string): Array<Record<string, unknown>> {
+  return DEMO_YOUTUBE_VIDEOS.map((v, i) => {
+    const postedAt = new Date();
+    postedAt.setDate(postedAt.getDate() - v.daysAgo);
+    postedAt.setUTCHours(16, 0, 0, 0);
+    const postedIso = postedAt.toISOString();
+
+    return {
+      user_id: userId,
+      artifact_type: 'post',
+      title: v.title,
+      content: v.title,
+      platform: 'youtube',
+      // 'imported_youtube' is what gatherUserContext and /api/performance
+      // filter on — anything else and these rows are invisible to both.
+      source: 'imported_youtube',
+      performance: {
+        views: v.views,
+        posted_at: postedIso,
+        likes: Math.round(v.views * 0.042),
+        comments: Math.round(v.views * 0.004),
+      },
+      metadata: {
+        demo: true,
+        hook_type: v.hook,
+        youtube_video_id: `demo_${i}`,
+      },
+      created_at: postedIso,
+    };
+  });
+}
