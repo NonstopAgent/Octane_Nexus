@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import DashboardPageHeader from '@/components/dashboard/DashboardPageHeader';
+import PerformanceChart from '@/components/dashboard/PerformanceChart';
 
 type TrackedChannel = {
   id: string;
@@ -655,6 +656,10 @@ export default function DailyBriefPage() {
           </div>
         )}
       </section>
+
+      {/* Real performance, real goals. Replaces the chart deleted in 26ea93e7,
+          which plotted a hardcoded STATS_DATA constant. */}
+      <PerformanceChart />
     </div>
   );
 }
