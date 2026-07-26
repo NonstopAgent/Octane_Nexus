@@ -20,9 +20,15 @@ export default function VideoInspirationGrid({ videos, returnTo = '/dashboard/li
   const router = useRouter();
 
   if (videos.length === 0) {
+    // Never surface environment-variable names to a creator. This previously
+    // read "Add YOUTUBE_API_KEY to your env to enable video recommendations",
+    // which is an instruction only the operator can act on and reads as a
+    // broken app to everyone else. The underlying cause (an expired shared
+    // YouTube key) is an ops problem, not something the user can fix.
     return (
       <div className="text-center py-12 text-slate-400 text-sm">
-        No videos found. Add YOUTUBE_API_KEY to your env to enable video recommendations.
+        Video recommendations are temporarily unavailable. Everything else on
+        this page still works.
       </div>
     );
   }

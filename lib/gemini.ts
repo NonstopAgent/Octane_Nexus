@@ -1624,10 +1624,43 @@ export type PlatformSpecificBlueprints = {
 
 // --- Nexus Chat ---
 
+/**
+ * A chat turn, in either shape the app actually produces.
+ *
+ * THE BUG THIS FIXES
+ * ------------------
+ * This type declared { role: 'user' | 'assistant', content: string } and
+ * chatWithNexus read `m.content`. But app/dashboard/chat/page.tsx has always
+ * sent Gemini's own wire format instead:
+ *
+ *     { role: 'user' | 'model', parts: [{ text }] }
+ *
+ * So `m.content` was undefined for every turn, `{ text: undefined }`
+ * serialized to `{}`, and Gemini rejected the whole request with:
+ *
+ *     GenerateContentRequest.contents[0].parts[0].data:
+ *     required oneof field 'data' must have one initialized field
+ *
+ * which the catch block turned into "I hit an error talking to the AI."
+ * Nexus Chat has never worked — the client and server contracts never
+ * matched, and nothing typed-checked the boundary because the route casts
+ * the request body straight to this type.
+ *
+ * Rather than pick a winner and break the other caller, accept both and
+ * normalize. New callers should use { role, content }.
+ */
 export type NexusChatMessage = {
-  role: 'user' | 'assistant';
-  content: string;
+  role: 'user' | 'assistant' | 'model';
+  content?: string;
+  parts?: Array<{ text?: string }>;
 };
+
+/** Pull the text out of a turn in either shape. Returns '' if there is none. */
+function chatMessageText(m: NexusChatMessage): string {
+  if (typeof m?.content === 'string' && m.content.trim()) return m.content;
+  const fromParts = m?.parts?.map((p) => p?.text || '').join('').trim();
+  return fromParts || '';
+}
 
 /**
  * Nexus chat assistant. Loads user's niche and brand vision from profile,
@@ -1687,10 +1720,22 @@ ${memoryContext}
 Be direct, specific, and practical. Reference their niche AND their actual saved work when giving examples. If you see they've already used a particular hook or angle in their memory, don't suggest it again unless they explicitly ask for variations. Avoid generic advice — every response should feel tailored to THEIR world, not a generic creator. Keep responses conversational and punchy. Don't use bullet lists unless absolutely necessary.`;
 
   try {
-    const geminiMessages = messages.map((m) => ({
-      role: m.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: m.content }],
-    }));
+    // Normalize both accepted shapes, and drop turns with no usable text —
+    // an empty parts array is what produced the 400 that broke this feature.
+    const geminiMessages = messages
+      .map((m) => ({
+        role: m.role === 'assistant' || m.role === 'model' ? 'model' : 'user',
+        text: chatMessageText(m),
+      }))
+      .filter((m) => m.text.length > 0)
+      .map((m) => ({ role: m.role, parts: [{ text: m.text }] }));
+
+    if (geminiMessages.length === 0) {
+      console.error('chatWithNexus: no usable text in any message', {
+        received: messages.length,
+      });
+      return "I didn't catch that — try sending your message again?";
+    }
 
     const response = await callGeminiModel(apiKey, {
       systemInstruction: { parts: [{ text: systemPrompt }] },
