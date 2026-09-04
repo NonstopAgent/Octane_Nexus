@@ -1,234 +1,54 @@
-import { NextRequest, NextResponse } from 'next/server';
-import type { SupabaseClient } from '@supabase/supabase-js';
-import { createServiceRoleClient } from '@/lib/supabaseServer';
-import { generateAndSaveBrief } from '@/lib/dailyBrief';
-import {
-  fetchPublicChannelVideos,
-  getValidYouTubeAccessToken,
-} from '@/lib/youtubeOAuth';
-import { runFeedbackLoopForUser } from '@/lib/briefFeedback';
-
+/**
+ * GET /api/cron/daily-brief
+ *
+ * Daily Vercel Cron. Enqueues one brief job per eligible user and returns.
+ * It does no generation itself, so it finishes in well under the Hobby 60s
+ * limit no matter how many users exist — the previous version looped over
+ * `slice(0, 25)` and silently dropped everyone it couldn't reach in time.
+ *
+ * The jobs are drained by /api/cron/brief-worker.
+ *
+ * Security: CRON_SECRET as an `Authorization: Bearer` header, which is the
+ * only mechanism Vercel documents. Fails closed in production when unset.
+ */
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
-/**
- * Refresh cached uploads for every tracked channel belonging to this user.
- * Uses the user's OAuth token (preferred) or the server YOUTUBE_API_KEY.
- */
-async function refreshTrackedChannelsVideos(
-  admin: SupabaseClient,
-  userId: string
-): Promise<{ refreshed: number; failed: number }> {
-  const { data: rows, error } = await admin
-    .from('tracked_channels')
-    .select('id, youtube_channel_id')
-    .eq('user_id', userId);
-
-  if (error || !rows?.length) {
-    return { refreshed: 0, failed: 0 };
-  }
-
-  // Cache the user's OAuth token for the whole loop
-  const accessToken = (await getValidYouTubeAccessToken(admin, userId)) ?? undefined;
-
-  let refreshed = 0;
-  let failed = 0;
-  const now = new Date().toISOString();
-
-  for (const row of rows) {
-    try {
-      const videos = await fetchPublicChannelVideos(
-        row.youtube_channel_id,
-        10,
-        accessToken
-      );
-      const recentVideos = videos.map((v) => ({
-        id: v.id,
-        title: v.title,
-        viewCount: v.viewCount,
-        publishedAt: v.publishedAt,
-        thumbnailUrl: v.thumbnailUrl,
-      }));
-
-      const { error: upErr } = await admin
-        .from('tracked_channels')
-        .update({
-          recent_videos: recentVideos,
-          last_synced_at: now,
-          updated_at: now,
-        })
-        .eq('id', row.id)
-        .eq('user_id', userId);
-
-      if (upErr) failed += 1;
-      else refreshed += 1;
-    } catch {
-      failed += 1;
-    }
-  }
-
-  return { refreshed, failed };
-}
-
-/**
- * Fetch the creator's own recent YouTube videos for the feedback loop.
- * Uses their connected YouTube channel ID from creator_connections (the
- * actual table — earlier code referenced a non-existent `connections` table).
- * Returns empty array if no YouTube connection is found (non-fatal).
- */
-async function fetchCreatorRecentVideos(
-  admin: SupabaseClient,
-  userId: string
-): Promise<Array<{ id: string; title: string; viewCount: number; publishedAt: string }>> {
-  try {
-    const { data: connection } = await admin
-      .from('creator_connections')
-      .select('provider_account_id')
-      .eq('user_id', userId)
-      .eq('provider', 'youtube')
-      .maybeSingle();
-
-    if (!connection?.provider_account_id) return [];
-
-    const accessToken =
-      (await getValidYouTubeAccessToken(admin, userId)) ?? undefined;
-
-    const videos = await fetchPublicChannelVideos(
-      connection.provider_account_id as string,
-      20,
-      accessToken
-    );
-    return videos.map((v) => ({
-      id: v.id,
-      title: v.title,
-      viewCount: v.viewCount,
-      publishedAt: v.publishedAt,
-    }));
-  } catch {
-    return [];
-  }
-}
-
-/**
- * Calculate the creator's median view count from their imported videos.
- */
-async function getCreatorMedianViews(
-  admin: SupabaseClient,
-  userId: string
-): Promise<number> {
-  const { data: artifacts } = await admin
-    .from('creator_artifacts')
-    .select('performance')
-    .eq('user_id', userId)
-    .eq('source', 'imported_youtube')
-    .not('performance->views', 'is', null)
-    .limit(30);
-
-  if (!artifacts || artifacts.length < 3) return 0;
-
-  const views = artifacts
-    .map((a) => Number((a.performance as { views?: number })?.views) || 0)
-    .filter((v) => v > 0)
-    .sort((a, b) => a - b);
-
-  if (views.length === 0) return 0;
-
-  const mid = Math.floor(views.length / 2);
-  return views.length % 2 !== 0
-    ? views[mid]
-    : (views[mid - 1] + views[mid]) / 2;
-}
-
-/**
- * Vercel Cron: pre-generate daily briefs for users with YouTube imports or tracked channels.
- *
- * Security: set CRON_SECRET in Vercel project env. Vercel Cron sends
- *   Authorization: Bearer <CRON_SECRET>
- * when that variable is configured.
- */
-function authorizeCron(req: NextRequest): boolean {
-  const secret = process.env.CRON_SECRET;
-  if (secret) {
-    const auth = req.headers.get('authorization');
-    if (auth === `Bearer ${secret}`) return true;
-  }
-  if (req.headers.get('x-vercel-cron') === '1') return true;
-  return false;
-}
+import { NextResponse, type NextRequest } from 'next/server';
+import { createServiceRoleClient } from '@/lib/supabaseServer';
+import { checkCronAuth } from '@/lib/security';
+import {
+  briefDateFor,
+  collectEligibleUserIds,
+  enqueueBriefJobs,
+  summarizeQueue,
+} from '@/lib/briefQueue';
 
 export async function GET(req: NextRequest) {
-  if (!authorizeCron(req)) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const cronAuth = checkCronAuth(req.headers);
+  if (!cronAuth.ok) {
+    return NextResponse.json({ error: cronAuth.error }, { status: cronAuth.status });
   }
 
   const admin = createServiceRoleClient();
-  const today = new Date().toISOString().slice(0, 10);
+  const briefDate = briefDateFor();
 
-  const { data: fromArtifacts } = await admin
-    .from('creator_artifacts')
-    .select('user_id')
-    .eq('source', 'imported_youtube');
+  try {
+    const userIds = await collectEligibleUserIds(admin);
+    const { enqueued } = await enqueueBriefJobs(admin, userIds, briefDate);
+    const queue = await summarizeQueue(admin, briefDate);
 
-  const { data: fromTracked } = await admin.from('tracked_channels').select('user_id');
-
-  const ids = new Set<string>();
-  for (const r of fromArtifacts || []) {
-    if (r.user_id) ids.add(r.user_id as string);
+    return NextResponse.json({
+      date: briefDate,
+      eligibleUsers: userIds.length,
+      enqueued,
+      queue,
+      message:
+        'Jobs queued. /api/cron/brief-worker generates the briefs a batch at a time.',
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    console.error('[cron/daily-brief]', err);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
-  for (const r of fromTracked || []) {
-    if (r.user_id) ids.add(r.user_id as string);
-  }
-
-  const userIds = [...ids].slice(0, 25);
-  let generated = 0;
-  let skipped = 0;
-
-  let channelsRefreshed = 0;
-  let channelRefreshFailed = 0;
-  let feedbackMatched = 0;
-  let feedbackIgnored = 0;
-
-  for (const userId of userIds) {
-    // Step 1: Refresh competitor channel videos
-    const { refreshed, failed } = await refreshTrackedChannelsVideos(admin, userId);
-    channelsRefreshed += refreshed;
-    channelRefreshFailed += failed;
-
-    // Step 2: Run the feedback loop BEFORE generating the new brief
-    // (so today's brief benefits from yesterday's feedback)
-    try {
-      const creatorVideos = await fetchCreatorRecentVideos(admin, userId);
-      const creatorMedian = await getCreatorMedianViews(admin, userId);
-
-      if (creatorVideos.length > 0) {
-        const feedbackResult = await runFeedbackLoopForUser(
-          admin,
-          userId,
-          creatorVideos,
-          creatorMedian
-        );
-        feedbackMatched += feedbackResult.matched;
-        feedbackIgnored += feedbackResult.ignored;
-      }
-    } catch (feedbackErr) {
-      // Non-fatal: feedback loop failure should not block brief generation
-      console.warn(`cron: feedback loop failed for user ${userId}`, feedbackErr);
-    }
-
-    // Step 3: Generate today's brief (now powered by updated memory)
-    const result = await generateAndSaveBrief(admin, userId, today);
-    if (result) generated += 1;
-    else skipped += 1;
-  }
-
-  return NextResponse.json({
-    date: today,
-    eligibleUsers: userIds.length,
-    generated,
-    skipped,
-    channelsRefreshed,
-    channelRefreshFailed,
-    feedbackMatched,
-    feedbackIgnored,
-  });
 }

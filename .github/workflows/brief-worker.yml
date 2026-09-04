@@ -1,0 +1,42 @@
+# Drains the brief_jobs queue.
+#
+# Vercel Hobby allows only one cron run per day, so the daily Vercel cron just
+# enqueues jobs and this workflow does the generating — a few users per pass,
+# every 15 minutes, until the queue is empty. Overlapping runs are safe: jobs
+# are claimed with FOR UPDATE SKIP LOCKED.
+#
+# One-time setup: repo Settings -> Secrets and variables -> Actions ->
+#   New repository secret: CRON_SECRET  (same value as the Vercel env var)
+#   New repository variable: APP_URL    (e.g. https://octane-nexus.vercel.app)
+# Without the secret the workflow exits quietly and does nothing.
+
+name: brief-worker
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch: {}
+
+concurrency:
+  group: brief-worker
+  cancel-in-progress: false
+
+jobs:
+  drain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Drain brief queue
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          APP_URL: ${{ vars.APP_URL }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "CRON_SECRET secret not set — skipping (see file header for setup)."
+            exit 0
+          fi
+          BASE="${APP_URL:-https://octane-nexus.vercel.app}"
+          echo "Draining queue at $BASE"
+          curl -sS --fail-with-body --max-time 120 \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$BASE/api/cron/brief-worker" | head -c 4000
