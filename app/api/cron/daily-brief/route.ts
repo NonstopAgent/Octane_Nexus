@@ -1,169 +1,12 @@
-import { NextRequest, NextResponse } from 'next/server';
-import type { SupabaseClient } from '@supabase/supabase-js';
-import { createServiceRoleClient } from '@/lib/supabaseServer';
-import { generateAndSaveBrief } from '@/lib/dailyBrief';
-import {
-  fetchPublicChannelVideos,
-  getValidYouTubeAccessToken,
-} from '@/lib/youtubeOAuth';
-import { runFeedbackLoopForUser } from '@/lib/briefFeedback';
-
-export const dynamic = 'force-dynamic';
-export const maxDuration = 60;
-
 /**
- * Refresh cached uploads for every tracked channel belonging to this user.
- * Uses the user's OAuth token (preferred) or the server YOUTUBE_API_KEY.
- */
-async function refreshTrackedChannelsVideos(
-  admin: SupabaseClient,
-  userId: string
-): Promise<{ refreshed: number; failed: number; skipped: number }> {
-  const { data: rows, error } = await admin
-    .from('tracked_channels')
-    .select('id, youtube_channel_id, last_synced_at')
-    .eq('user_id', userId);
-
-  if (error || !rows?.length) {
-    return { refreshed: 0, failed: 0, skipped: 0 };
-  }
-
-  // Skip channels synced recently.
-  //
-  // This ran unconditionally on every invocation, so each call to this
-  // endpoint spent real YouTube API quota per tracked channel. Combined with
-  // the fact that the endpoint currently authorizes on a spoofable
-  // User-Agent (CRON_SECRET is unset), that made repeat triggering a way to
-  // burn quota on someone else's behalf.
-  //
-  // A daily job never needs to re-sync something fetched an hour ago, so
-  // this costs nothing in normal operation and bounds the damage otherwise.
-  const STALE_AFTER_MS = 6 * 60 * 60 * 1000;
-  const now_ms = Date.now();
-  const stale = rows.filter((row) => {
-    if (!row.last_synced_at) return true;
-    const age = now_ms - new Date(row.last_synced_at as string).getTime();
-    return !Number.isFinite(age) || age >= STALE_AFTER_MS;
-  });
-  const skipped = rows.length - stale.length;
-
-  if (stale.length === 0) {
-    return { refreshed: 0, failed: 0, skipped };
-  }
-
-  // Cache the user's OAuth token for the whole loop
-  const accessToken = (await getValidYouTubeAccessToken(admin, userId)) ?? undefined;
-
-  let refreshed = 0;
-  let failed = 0;
-  const now = new Date().toISOString();
-
-  for (const row of stale) {
-    try {
-      const videos = await fetchPublicChannelVideos(
-        row.youtube_channel_id,
-        10,
-        accessToken
-      );
-      const recentVideos = videos.map((v) => ({
-        id: v.id,
-        title: v.title,
-        viewCount: v.viewCount,
-        publishedAt: v.publishedAt,
-        thumbnailUrl: v.thumbnailUrl,
-      }));
-
-      const { error: upErr } = await admin
-        .from('tracked_channels')
-        .update({
-          recent_videos: recentVideos,
-          last_synced_at: now,
-          updated_at: now,
-        })
-        .eq('id', row.id)
-        .eq('user_id', userId);
-
-      if (upErr) failed += 1;
-      else refreshed += 1;
-    } catch {
-      failed += 1;
-    }
-  }
-
-  return { refreshed, failed, skipped };
-}
-
-/**
- * Fetch the creator's own recent YouTube videos for the feedback loop.
- * Uses their connected YouTube channel ID from creator_connections (the
- * actual table — earlier code referenced a non-existent `connections` table).
- * Returns empty array if no YouTube connection is found (non-fatal).
- */
-async function fetchCreatorRecentVideos(
-  admin: SupabaseClient,
-  userId: string
-): Promise<Array<{ id: string; title: string; viewCount: number; publishedAt: string }>> {
-  try {
-    const { data: connection } = await admin
-      .from('creator_connections')
-      .select('provider_account_id')
-      .eq('user_id', userId)
-      .eq('provider', 'youtube')
-      .maybeSingle();
-
-    if (!connection?.provider_account_id) return [];
-
-    const accessToken =
-      (await getValidYouTubeAccessToken(admin, userId)) ?? undefined;
-
-    const videos = await fetchPublicChannelVideos(
-      connection.provider_account_id as string,
-      20,
-      accessToken
-    );
-    return videos.map((v) => ({
-      id: v.id,
-      title: v.title,
-      viewCount: v.viewCount,
-      publishedAt: v.publishedAt,
-    }));
-  } catch {
-    return [];
-  }
-}
-
-/**
- * Calculate the creator's median view count from their imported videos.
- */
-async function getCreatorMedianViews(
-  admin: SupabaseClient,
-  userId: string
-): Promise<number> {
-  const { data: artifacts } = await admin
-    .from('creator_artifacts')
-    .select('performance')
-    .eq('user_id', userId)
-    .eq('source', 'imported_youtube')
-    .not('performance->views', 'is', null)
-    .limit(30);
-
-  if (!artifacts || artifacts.length < 3) return 0;
-
-  const views = artifacts
-    .map((a) => Number((a.performance as { views?: number })?.views) || 0)
-    .filter((v) => v > 0)
-    .sort((a, b) => a - b);
-
-  if (views.length === 0) return 0;
-
-  const mid = Math.floor(views.length / 2);
-  return views.length % 2 !== 0
-    ? views[mid]
-    : (views[mid - 1] + views[mid]) / 2;
-}
-
-/**
- * Vercel Cron: pre-generate daily briefs for users with YouTube imports or tracked channels.
+ * GET /api/cron/daily-brief
+ *
+ * Daily Vercel Cron. Enqueues one brief job per eligible user and returns.
+ * It does no generation itself, so it finishes well inside the Hobby 60s limit
+ * no matter how many users exist — the previous version looped over
+ * `slice(0, 25)` and silently dropped everyone it couldn't reach in time.
+ *
+ * The jobs are drained by /api/cron/brief-worker.
  *
  * Security / history
  * ------------------
@@ -172,181 +15,74 @@ async function getCreatorMedianViews(
  * cron reporting is concerned. The daily brief — the entire product — simply
  * never generated.
  *
- * The old check trusted exactly two signals and silently rejected everything
- * else. If CRON_SECRET was set or rotated in the Vercel dashboard *after* the
- * last deployment, the running function still held the old value while Vercel
- * sent the new one, so the Bearer comparison never matched and the legacy
- * `x-vercel-cron: 1` header (which Vercel no longer reliably sends) didn't
- * save it.
+ * Two things prevent a repeat. Authorization is the CRON_SECRET bearer token,
+ * the only mechanism Vercel documents, and it fails CLOSED with a 500 (not a
+ * 401) in production when the secret is unset, so a misconfiguration surfaces
+ * as a server error rather than a plausible-looking rejection. And every
+ * rejection is logged with its reason, so a bad config is visible in the logs
+ * within one run instead of invisible for a month.
  *
- * Now: we accept any legitimate Vercel cron signal, and — critically — we log
- * exactly which signals were present when we reject, so a misconfiguration is
- * visible in the logs within one run instead of invisible for a month.
+ * If you rotate CRON_SECRET in the Vercel dashboard you must redeploy — env
+ * changes do not reach an already-running deployment.
  */
-function authorizeCron(req: NextRequest): {
-  authorized: boolean;
-  via: string;
-  reason?: string;
-} {
-  const secret = process.env.CRON_SECRET;
-  const auth = req.headers.get('authorization');
-  const vercelCronHeader = req.headers.get('x-vercel-cron');
-  const userAgent = req.headers.get('user-agent') || '';
-  const isVercelCronUA = /vercel-cron/i.test(userAgent);
+export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
-  // Preferred path: the shared secret matches.
-  if (secret && auth === `Bearer ${secret}`) {
-    return { authorized: true, via: 'cron-secret' };
-  }
-
-  // x-vercel-* headers are stripped from inbound external requests at the
-  // edge, so their presence genuinely proves a Vercel-internal caller.
-  if (vercelCronHeader) {
-    return { authorized: true, via: 'x-vercel-cron' };
-  }
-
-  // User-Agent is trivially spoofable, so it is ONLY accepted when no
-  // secret is configured — i.e. as the last resort that keeps the product
-  // running rather than as an alternative to real auth. Once CRON_SECRET
-  // is set, a UA-only request is rejected; otherwise setting the secret
-  // would paradoxically weaken the endpoint.
-  if (!secret && isVercelCronUA) {
-    console.warn(
-      '[cron/daily-brief] authorized on User-Agent alone because CRON_SECRET is unset. ' +
-        'This header is spoofable — set CRON_SECRET in Vercel and redeploy.'
-    );
-    return { authorized: true, via: 'vercel-cron-user-agent (weak)' };
-  }
-
-  // No secret configured and no Vercel signal: this is a manual hit.
-  if (!secret) {
-    return {
-      authorized: false,
-      via: 'none',
-      reason:
-        'CRON_SECRET is not set and no Vercel cron signal was present. Set CRON_SECRET in Vercel and redeploy.',
-    };
-  }
-
-  return {
-    authorized: false,
-    via: 'none',
-    reason: `CRON_SECRET is set but the Authorization header did not match (header ${
-      auth ? 'present but different' : 'absent'
-    }). If you changed CRON_SECRET in the Vercel dashboard, redeploy — env changes do not reach a running deployment.`,
-  };
-}
+import { NextResponse, type NextRequest } from 'next/server';
+import { createServiceRoleClient } from '@/lib/supabaseServer';
+import { checkCronAuth } from '@/lib/security';
+import {
+  briefDateFor,
+  collectEligibleUserIds,
+  enqueueBriefJobs,
+  summarizeQueue,
+} from '@/lib/briefQueue';
 
 export async function GET(req: NextRequest) {
-  const auth = authorizeCron(req);
-  if (!auth.authorized) {
+  const cronAuth = checkCronAuth(req.headers);
+  if (!cronAuth.ok) {
     // Loud on purpose. The previous silent 401 hid a total product outage.
-    console.error(`[cron/daily-brief] REJECTED: ${auth.reason}`);
+    console.error(`[cron/daily-brief] REJECTED (${cronAuth.status}): ${cronAuth.error}`);
     return NextResponse.json(
-      { error: 'Unauthorized', reason: auth.reason },
-      { status: 401 }
+      { error: 'Unauthorized', reason: cronAuth.error },
+      { status: cronAuth.status }
     );
   }
-  console.info(`[cron/daily-brief] authorized via ${auth.via}`);
 
   const admin = createServiceRoleClient();
-  const today = new Date().toISOString().slice(0, 10);
+  const briefDate = briefDateFor();
 
-  const { data: fromArtifacts } = await admin
-    .from('creator_artifacts')
-    .select('user_id')
-    .eq('source', 'imported_youtube');
+  try {
+    const userIds = await collectEligibleUserIds(admin);
+    const { enqueued } = await enqueueBriefJobs(admin, userIds, briefDate);
+    const queue = await summarizeQueue(admin, briefDate);
 
-  const { data: fromTracked } = await admin.from('tracked_channels').select('user_id');
+    const summary = {
+      date: briefDate,
+      eligibleUsers: userIds.length,
+      enqueued,
+      queue,
+      message:
+        'Jobs queued. /api/cron/brief-worker generates the briefs a batch at a time.',
+    };
 
-  const ids = new Set<string>();
-  for (const r of fromArtifacts || []) {
-    if (r.user_id) ids.add(r.user_id as string);
-  }
-  for (const r of fromTracked || []) {
-    if (r.user_id) ids.add(r.user_id as string);
-  }
-
-  const userIds = [...ids].slice(0, 25);
-  let generated = 0;
-  let skipped = 0;
-  let reused = 0;
-
-  let channelsRefreshed = 0;
-  let channelRefreshFailed = 0;
-  let channelsAlreadyFresh = 0;
-  let feedbackMatched = 0;
-  let feedbackIgnored = 0;
-
-  for (const userId of userIds) {
-    // Step 1: Refresh competitor channel videos
-    const { refreshed, failed, skipped: freshSkipped } =
-      await refreshTrackedChannelsVideos(admin, userId);
-    channelsRefreshed += refreshed;
-    channelRefreshFailed += failed;
-    channelsAlreadyFresh += freshSkipped;
-
-    // Step 2: Run the feedback loop BEFORE generating the new brief
-    // (so today's brief benefits from yesterday's feedback)
-    try {
-      const creatorVideos = await fetchCreatorRecentVideos(admin, userId);
-      const creatorMedian = await getCreatorMedianViews(admin, userId);
-
-      if (creatorVideos.length > 0) {
-        const feedbackResult = await runFeedbackLoopForUser(
-          admin,
-          userId,
-          creatorVideos,
-          creatorMedian
-        );
-        feedbackMatched += feedbackResult.matched;
-        feedbackIgnored += feedbackResult.ignored;
-      }
-    } catch (feedbackErr) {
-      // Non-fatal: feedback loop failure should not block brief generation
-      console.warn(`cron: feedback loop failed for user ${userId}`, feedbackErr);
+    // A run that "succeeds" having queued nothing must look different in the
+    // logs from one that actually worked.
+    if (userIds.length === 0) {
+      console.warn(
+        '[cron/daily-brief] no eligible users — nobody has imported YouTube videos or tracked a channel'
+      );
+    } else {
+      console.info(
+        `[cron/daily-brief] ${enqueued} job(s) queued for ${userIds.length} eligible user(s)`,
+        summary
+      );
     }
 
-    // Step 3: Generate today's brief (now powered by updated memory).
-    // No force flag: if today's brief already exists we reuse it rather than
-    // paying for another Gemini call, which makes repeat invocation cheap.
-    const result = await generateAndSaveBrief(admin, userId, today);
-    if (result?.reused) reused += 1;
-    else if (result) generated += 1;
-    else skipped += 1;
+    return NextResponse.json(summary);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    console.error('[cron/daily-brief] failed to enqueue', err);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
-
-  const summary = {
-    date: today,
-    eligibleUsers: userIds.length,
-    generated,
-    reused,
-    skipped,
-    channelsRefreshed,
-    channelsAlreadyFresh,
-    channelRefreshFailed,
-    feedbackMatched,
-    feedbackIgnored,
-  };
-
-  // Log the outcome so a run that "succeeds" with zero briefs generated is
-  // visibly different from one that actually worked.
-  if (userIds.length === 0) {
-    console.warn('[cron/daily-brief] no eligible users — nobody has imported YouTube videos or tracked a channel');
-  } else if (generated === 0 && reused === 0) {
-    // Nothing generated AND nothing reused means every user was skipped —
-    // that is a real failure worth an error.
-    console.error(`[cron/daily-brief] ran for ${userIds.length} user(s) and produced nothing`, summary);
-  } else {
-    // Reusing an existing brief is the idempotency guard working as designed,
-    // not a failure. The first version logged this as an error, which would
-    // have cried wolf every single day a user generated their own brief
-    // before the cron fired.
-    console.info(
-      `[cron/daily-brief] ${generated} generated, ${reused} reused across ${userIds.length} user(s)`,
-      summary
-    );
-  }
-
-  return NextResponse.json(summary);
 }

@@ -1,24 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
-import { createClient } from '@supabase/supabase-js';
+import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { cookies } from 'next/headers';
 import { POST_STATUS } from '@/lib/status';
 import { createClient as createPexelsClient } from 'pexels';
+
+export const dynamic = 'force-dynamic';
 
 const CREDITS_COST = 10;
 
 export async function POST(req: NextRequest) {
+  // Authenticated session — this route spends OpenAI credits and mutates the
+  // caller's credit balance, so the identity must come from the session and
+  // never from the request body or the row being edited.
+  const supabase = createRouteHandlerClient({ cookies });
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+  }
+  const userId = user.id;
+
   try {
     const { postId } = (await req.json()) as { postId: string };
     if (!postId) {
       return NextResponse.json({ error: 'postId is required' }, { status: 400 });
     }
-
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    if (!supabaseUrl || !supabaseKey) {
-      return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
-    }
-    const supabase = createClient(supabaseUrl, supabaseKey);
 
     const openaiKey = process.env.OPENAI_API_KEY;
     const pexelsKey = process.env.PEXELS_API_KEY;
@@ -26,11 +32,13 @@ export async function POST(req: NextRequest) {
     if (!openaiKey) return NextResponse.json({ error: 'OPENAI_API_KEY not set' }, { status: 500 });
     if (!pexelsKey) return NextResponse.json({ error: 'PEXELS_API_KEY not set' }, { status: 500 });
 
-    // 1. Fetch post
+    // 1. Fetch post — scoped to the caller, so another user's post is a 404
+    //    rather than something we act on.
     const { data: post, error: postErr } = await supabase
       .from('content_posts')
       .select('*')
       .eq('id', postId)
+      .eq('user_id', userId)
       .single();
 
     if (postErr || !post) {
@@ -44,34 +52,33 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const userId = post.user_id;
+    // 2 & 3. Check and deduct credits in a single atomic statement. The RPC
+    //    derives the user from auth.uid(), so it can only ever touch the
+    //    caller's own balance, and it returns null when the balance is too low
+    //    (or the row is missing) rather than racing a read against a write.
+    const { data: remainingCredits, error: debitErr } = await supabase.rpc(
+      'deduct_own_credits',
+      { p_amount: CREDITS_COST }
+    );
 
-    // 2. Credit check
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('credits')
-      .eq('id', userId)
-      .single();
+    if (debitErr) {
+      console.error('generate-video-asset: credit deduction failed', debitErr);
+      return NextResponse.json({ error: 'Could not reserve credits.' }, { status: 500 });
+    }
 
-    const credits = (profile?.credits ?? 50) as number;
-    if (credits < CREDITS_COST) {
+    if (remainingCredits === null) {
       return NextResponse.json(
-        { error: `Insufficient credits. Need ${CREDITS_COST}, have ${credits}.` },
+        { error: `Insufficient credits. This costs ${CREDITS_COST}.` },
         { status: 402 }
       );
     }
-
-    // 3. Deduct credits
-    await supabase
-      .from('profiles')
-      .update({ credits: Math.max(0, credits - CREDITS_COST) })
-      .eq('id', userId);
 
     // 4. Set status generating
     await supabase
       .from('content_posts')
       .update({ status: 'generating', updated_at: new Date().toISOString() })
-      .eq('id', postId);
+      .eq('id', postId)
+      .eq('user_id', userId);
 
     const sc = (post.script_content || {}) as { hook?: string; meat?: string[] };
     const textForTts = [sc.hook, ...(sc.meat || [])].filter(Boolean).join('\n\n') || post.title;
@@ -95,7 +102,8 @@ export async function POST(req: NextRequest) {
       });
 
     if (uploadErr) {
-      await supabase.from('profiles').update({ credits }).eq('id', userId);
+      // Refund atomically too, so a concurrent change isn't clobbered.
+      await supabase.rpc('refund_own_credits', { p_amount: CREDITS_COST });
       return NextResponse.json({ error: 'Failed to upload audio: ' + uploadErr.message }, { status: 500 });
     }
 
@@ -128,7 +136,8 @@ export async function POST(req: NextRequest) {
         status: POST_STATUS.READY,
         updated_at: new Date().toISOString(),
       })
-      .eq('id', postId);
+      .eq('id', postId)
+      .eq('user_id', userId);
 
     return NextResponse.json({ success: true, audioUrl, backgroundVideoUrl });
   } catch (error: unknown) {
