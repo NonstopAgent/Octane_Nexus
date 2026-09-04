@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isAllowedProxyUrl } from '@/lib/security';
 
 export async function GET(req: NextRequest) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -11,8 +12,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'url is required' }, { status: 400 });
   }
 
-  // Only allow our Supabase storage URLs
-  if (!url.startsWith(supabaseUrl)) {
+  // Only allow our Supabase storage URLs. Origin comparison, not a prefix
+  // match — a prefix check lets `<project>.supabase.co.attacker.com` through.
+  if (!isAllowedProxyUrl(url, supabaseUrl)) {
     return NextResponse.json({ error: 'Invalid image URL' }, { status: 403 });
   }
 

@@ -135,8 +135,7 @@ const PEXELS_QUERIES: Record<string, string> = {
 export async function fetchPexelsBackground(
   category: string
 ): Promise<{ url: string; source: 'pexels' } | null> {
-  const apiKey =
-    process.env.PEXELS_API_KEY || process.env.NEXT_PUBLIC_PEXELS_API_KEY;
+  const apiKey = process.env.PEXELS_API_KEY;
   if (!apiKey?.trim()) return null;
 
   const query = PEXELS_QUERIES[category] || PEXELS_QUERIES.general;

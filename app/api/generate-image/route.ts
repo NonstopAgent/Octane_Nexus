@@ -1,7 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { cookies } from 'next/headers';
 import OpenAI from 'openai';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: NextRequest) {
+  // Image generation costs real money per call — never leave this open.
+  const supabase = createRouteHandlerClient({ cookies });
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+  }
+
   try {
     // Initialize OpenAI inside the function to catch initialization errors
     const openai = new OpenAI({
