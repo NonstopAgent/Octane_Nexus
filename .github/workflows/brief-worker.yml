@@ -7,7 +7,6 @@
 #
 # One-time setup: repo Settings -> Secrets and variables -> Actions ->
 #   New repository secret: CRON_SECRET  (same value as the Vercel env var)
-#   New repository variable: APP_URL    (e.g. https://octane-nexus.vercel.app)
 # Without the secret the workflow exits quietly and does nothing.
 
 name: brief-worker
@@ -35,7 +34,7 @@ jobs:
             echo "CRON_SECRET secret not set — skipping (see file header for setup)."
             exit 0
           fi
-          BASE="${APP_URL:-https://octane-nexus.vercel.app}"
+          BASE="${APP_URL:-https://octane-nexus-6em9.vercel.app}"
           echo "Draining queue at $BASE"
           curl -sS --fail-with-body --max-time 120 \
             -H "Authorization: Bearer $CRON_SECRET" \
