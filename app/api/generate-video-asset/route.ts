@@ -4,6 +4,7 @@ import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { POST_STATUS } from '@/lib/status';
 import { createClient as createPexelsClient } from 'pexels';
+import { createServiceRoleClient } from '@/lib/supabaseServer';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,6 +20,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
   }
   const userId = user.id;
+
+  // Refunds are a server decision, never a user-callable primitive: the old
+  // refund_own_credits() derived its target from auth.uid() and was executable
+  // by `authenticated`, so a signed-in user could POST straight to
+  // /rest/v1/rpc/refund_own_credits and mint themselves credits. refund_credits
+  // takes an explicit user id and is granted to service_role only.
+  let creditsDebited = false;
+  const refundIfDebited = async () => {
+    if (!creditsDebited) return;
+    creditsDebited = false;
+    try {
+      const admin = createServiceRoleClient();
+      await admin.rpc('refund_credits', { p_user_id: userId, p_amount: CREDITS_COST });
+    } catch (refundErr) {
+      console.error('generate-video-asset: refund failed', { userId, refundErr });
+    }
+  };
 
   try {
     const { postId } = (await req.json()) as { postId: string };
@@ -72,6 +90,7 @@ export async function POST(req: NextRequest) {
         { status: 402 }
       );
     }
+    creditsDebited = true;
 
     // 4. Set status generating
     await supabase
@@ -102,8 +121,7 @@ export async function POST(req: NextRequest) {
       });
 
     if (uploadErr) {
-      // Refund atomically too, so a concurrent change isn't clobbered.
-      await supabase.rpc('refund_own_credits', { p_amount: CREDITS_COST });
+      await refundIfDebited();
       return NextResponse.json({ error: 'Failed to upload audio: ' + uploadErr.message }, { status: 500 });
     }
 
@@ -141,6 +159,9 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true, audioUrl, backgroundVideoUrl });
   } catch (error: unknown) {
+    // The debit lands before the OpenAI and Pexels calls, so without this a
+    // throw past that point burns the caller's credits and delivers nothing.
+    await refundIfDebited();
     console.error('generate-video-asset error:', error);
     const message = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json({ error: message }, { status: 500 });

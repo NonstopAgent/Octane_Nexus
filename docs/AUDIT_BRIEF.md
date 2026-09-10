@@ -85,7 +85,7 @@ applied migrations. **They are not the same 32.**
 20260409100000_tracked_channels_last_synced.sql
 ```
 
-**Applied in production with no file in the repo (9):**
+**Applied in production with no file in the repo (8):**
 
 ```
 20260403184808 auto_create_profile_on_signup
@@ -96,8 +96,11 @@ applied migrations. **They are not the same 32.**
 20260629172816 create_velocity_tracking
 20260713133018 enable_pg_net
 20260725004239 revoke_security_definer_execute_from_public
-20260904172022 grant_claim_brief_jobs_to_service_role
 ```
+
+(Two more were in this list until 2026-09-10; I backfilled repo files for
+`grant_claim_brief_jobs_to_service_role` and the new
+`refunds_are_service_role_only` rather than widen a gap I was documenting.)
 
 Plus four more where the repo file and the applied migration share a name but
 have **different version timestamps** (`brief_memory_feedback`,
@@ -177,6 +180,27 @@ costs you credibility on the findings that are real.
 | 25-user ceiling: one 60s cron doing all work inline | split into enqueue + worker with `FOR UPDATE SKIP LOCKED`, time budget, retries |
 | Next.js fetch-cache serving stale rows | `cache: 'no-store'` (see 3b) |
 | Demo mode granting identity in production | `isDemoIdentityAllowed` (see 3c) |
+| **Any signed-in user could mint unlimited credits** | see below |
+
+**The credit-minting hole (fixed 2026-09-10).** `refund_own_credits(p_amount)`
+was `SECURITY DEFINER`, derived its target from `auth.uid()`, and was
+EXECUTE-able by `authenticated`. Any signed-in tester could POST
+`/rest/v1/rpc/refund_own_credits {"p_amount": 999999}` with their own anon-key
+session and grant themselves unlimited credits — no server code involved. It was
+introduced by the queue work in the previous session.
+
+Resolution (`20260910210011_refunds_are_service_role_only`): the function is
+dropped and replaced by `refund_credits(p_user_id uuid, p_amount integer)`,
+granted to `service_role` only, so a refund can only ever originate from trusted
+server code. `app/api/generate-video-asset/route.ts` now refunds through a
+service-role client, and — separately — refunds in its `catch` block too, which
+it previously did not: a throw after the debit but before delivery used to burn
+the caller's credits silently. `deduct_own_credits` keeps its `authenticated`
+grant (it only ever subtracts from the caller's own balance and floors there, so
+it is not exploitable for gain) but was revoked from `PUBLIC`.
+
+Verified: `refund_credits` and `claim_brief_jobs` ACLs are `service_role` only;
+`deduct_own_credits` is `authenticated` + `service_role` with no PUBLIC entry.
 
 Verified empirically against the production DB: claim marks `running`/`attempts=1`;
 an immediate second claim returns 0; a stale + attempt-exhausted job returns 0; a
@@ -190,29 +214,14 @@ from one job with three competitor insights.
 These are real, evidenced, and unfixed. Confirm each, then expand the search for
 the same *class* of problem elsewhere.
 
-### 5a. HIGH — `refund_own_credits` lets any signed-in user mint credits
+### 5a. ~~HIGH — `refund_own_credits` lets any signed-in user mint credits~~ FIXED
 
-`public.refund_own_credits(p_amount integer)` is `SECURITY DEFINER`, executable
-by the `authenticated` role, and does this:
-
-```sql
-update public.profiles set credits = coalesce(credits, 0) + p_amount
-where id = v_uid;
-```
-
-It validates only `p_amount > 0` and `auth.uid() is not null`. There is no check
-that a matching deduction ever occurred.
-
-**Failure scenario:** any signed-in tester POSTs
-`/rest/v1/rpc/refund_own_credits` with `{"p_amount": 999999}` using their own
-anon-key session and grants themselves unlimited credits. No server code needs to
-be involved.
-
-*(Attribution: I introduced this in the last session's queue work. It needs a
-caller-identity restriction — service-role only, or a ledger check.)*
-
-Same review needed on `deduct_own_credits`. It is safer (it only subtracts and
-floors at the balance) but is exposed to `anon` and `authenticated` the same way.
+Found and fixed while writing this brief; recorded here so you can verify the
+fix rather than rediscover the hole. See §4 for the resolution. Worth **one
+check on your part**: confirm no other `SECURITY DEFINER` function in the
+`public` schema does a privileged write while deriving its target from
+`auth.uid()` and being EXECUTE-able by `authenticated`. That is the class of bug;
+one instance is fixed, and I did not sweep for others.
 
 ### 5b. MEDIUM — `daily_briefs` has no INSERT policy
 
@@ -290,14 +299,23 @@ I flagged these and did not chase them. Treat each as a question, not a claim.
    Cause unknown. Cannot be diagnosed from the repo alone — note it and move on.
 9. **Leaked-password protection is disabled** in Supabase Auth (HaveIBeenPwned
    check). One-click dashboard setting; include it in the list for completeness.
+10. **Posts can get stuck in `generating` forever.**
+    `app/api/generate-video-asset/route.ts` sets `status: 'generating'` before
+    the OpenAI and Pexels calls and never resets it on failure. Credits are now
+    refunded on that path (§4), but the row's status is not. A tester whose TTS
+    call times out sees a post spinning permanently with no way to retry. Sweep
+    for the same pattern on every other route that sets a transient status
+    before an external call — this is a class, not an instance.
 
 ---
 
 ## 7. How to verify your findings
 
-The gate is green at `93e3244d`: typecheck 0 errors, lint 0 errors, 50/50 tests
-pass, build succeeds. If you see anything different, **your environment is
-broken, not the code** — check the trap below first.
+The gate is green on `main` as of 2026-09-10: typecheck 0 errors, lint 0 errors
+(warnings only — `<img>` and one exhaustive-deps), 50/50 tests pass, and
+`npm run build` exits 0. If you see anything different, **your environment is
+broken, not the code** — work through all four traps below before you conclude
+otherwise.
 
 ```bash
 npm run typecheck
@@ -306,29 +324,63 @@ npm test          # node:test + tsx, hermetic: no server, no DB, no network
 npm run build
 ```
 
-### The environment trap — read before running anything
+### Environment trap #1 — `NODE_ENV` cuts both ways. Read this carefully.
 
-`NODE_ENV` is set to `production` machine-wide on this Windows box. That makes
-`npm install` **skip every devDependency**, which then makes typecheck, lint, and
-tests all fail in confusing, misleading ways. If tooling is missing:
+`NODE_ENV` is set to `production` machine-wide on this Windows box. It has to be
+overridden for **install** and left alone for **build**. Getting this backwards
+produces two completely different sets of phantom failures.
+
+**For `npm install` — override it.** Otherwise npm skips every devDependency,
+and typecheck, lint, and tests then fail in confusing, misleading ways:
 
 ```powershell
 $env:NODE_ENV = "development"
 npm install --include=dev --ignore-scripts
 ```
 
-**Second trap:** do not write `package.json` with PowerShell's
-`Set-Content -Encoding UTF8`. It prepends a BOM, and `tsx` then fails with
-`Error parsing: package.json` on every single `.ts` test. If you must write it
-from PowerShell:
+**For `npm run build` — do NOT override it.** `next build` under
+`NODE_ENV=development` loads the dev React runtime and then fails export on
+**every single page**:
+
+```
+> Export encountered errors on following paths:
+	/_error: /404
+	/dashboard/brief/page: /dashboard/brief
+	... 21 more
+Error: <Html> should not be imported outside of pages/_document.
+```
+
+None of that is real. Run the build in a shell where `NODE_ENV` is untouched
+(or explicitly `production`) and it exits 0. I hit this while writing this brief
+and briefly believed the app was broken. Verify `$env:NODE_ENV` before you
+conclude anything from a build.
+
+### Environment trap #2 — build-log noise that is not failure
+
+A **passing** build still prints these. They do not affect the exit code:
+
+- `Dynamic server usage: Route /api/... couldn't be rendered statically because
+  it used 'cookies'` — roughly 13 routes. Worth investigating (§6.2), but it is
+  a warning, not a build failure.
+- `<Html> should not be imported outside of pages/_document` — only appears
+  under the `NODE_ENV` mistake above. In a correct build it does not appear.
+
+Confirm `npm run build` exits 0 before reporting any build finding.
+
+### Environment trap #3 — PowerShell adds a BOM
+
+Do not write `package.json` with `Set-Content -Encoding UTF8`. It prepends a
+BOM, and `tsx` then fails with `Error parsing: package.json` on every single
+`.ts` test. If you must write it from PowerShell:
 
 ```powershell
 [System.IO.File]::WriteAllText($path, $content, (New-Object System.Text.UTF8Encoding $false))
 ```
 
-**Third trap:** PowerShell's .NET methods do not inherit the shell's current
-directory — `[System.IO.File]::ReadAllText("app\foo.ts")` resolves against
-`C:\Windows\system32\`. Always pass absolute paths.
+### Environment trap #4 — PowerShell's .NET methods ignore the shell's cwd
+
+`[System.IO.File]::ReadAllText("app\foo.ts")` resolves against
+`C:\Windows\system32\`, not the repo. Always pass absolute paths.
 
 ---
 
