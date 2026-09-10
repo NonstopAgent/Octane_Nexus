@@ -34,6 +34,7 @@ import { checkCronAuth } from '@/lib/security';
 import {
   briefDateFor,
   collectEligibleUserIds,
+  countRegisteredUsers,
   enqueueBriefJobs,
   summarizeQueue,
 } from '@/lib/briefQueue';
@@ -59,13 +60,20 @@ export async function GET(req: NextRequest) {
   const briefDate = briefDateFor();
 
   try {
-    const userIds = await collectEligibleUserIds(admin);
+    const [userIds, registeredUsers] = await Promise.all([
+      collectEligibleUserIds(admin),
+      countRegisteredUsers(admin),
+    ]);
     const { enqueued } = await enqueueBriefJobs(admin, userIds, briefDate);
     const queue = await summarizeQueue(admin, briefDate);
 
+    const ineligibleUsers = Math.max(0, registeredUsers - userIds.length);
+
     const summary = {
       date: briefDate,
+      registeredUsers,
       eligibleUsers: userIds.length,
+      ineligibleUsers,
       enqueued,
       queue,
       message:
@@ -76,12 +84,23 @@ export async function GET(req: NextRequest) {
     // logs from one that actually worked.
     if (userIds.length === 0) {
       console.warn(
-        '[cron/daily-brief] no eligible users — nobody has imported YouTube videos or tracked a channel'
+        '[cron/daily-brief] no eligible users — nobody has imported YouTube videos or tracked a channel',
+        summary
       );
     } else {
       console.info(
         `[cron/daily-brief] ${enqueued} job(s) queued for ${userIds.length} eligible user(s)`,
         summary
+      );
+    }
+
+    // The silent majority. Someone who signed up and never connected a channel
+    // is skipped by this job every day with no error, so a recruited tester who
+    // bounced looks identical to no tester at all. Make the ratio visible.
+    if (ineligibleUsers > 0) {
+      console.warn(
+        `[cron/daily-brief] ${ineligibleUsers} of ${registeredUsers} registered user(s) are NOT eligible ` +
+          'for a brief — they have no tracked channel and no imported videos, so they will receive nothing.'
       );
     }
 

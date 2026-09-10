@@ -102,6 +102,25 @@ export async function collectEligibleUserIds(
 }
 
 /**
+ * How many people have an account at all.
+ *
+ * Paired with the eligible count this turns the silent majority into a number.
+ * Eligibility requires a tracked channel or imported videos, so someone who
+ * signs up and connects nothing is skipped by the cron forever with no error
+ * anywhere — which is exactly what a recruited tester looks like on day one.
+ */
+export async function countRegisteredUsers(
+  admin: SupabaseClient
+): Promise<number> {
+  const { count, error } = await admin
+    .from('profiles')
+    .select('id', { count: 'exact', head: true });
+
+  if (error) return 0;
+  return count ?? 0;
+}
+
+/**
  * Queue one job per user for the date. Idempotent: the table is unique on
  * (user_id, brief_date), so re-running the cron never duplicates work and
  * never resets a job that already finished.
