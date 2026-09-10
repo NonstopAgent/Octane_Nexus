@@ -48,6 +48,12 @@ export async function GET(req: NextRequest) {
       { status: cronAuth.status }
     );
   }
+  if (cronAuth.weak) {
+    console.warn(
+      '[cron/daily-brief] authorized on Vercel cron User-Agent alone because CRON_SECRET is unset. ' +
+        'That header is spoofable — set CRON_SECRET in Vercel and redeploy.'
+    );
+  }
 
   const admin = createServiceRoleClient();
   const briefDate = briefDateFor();

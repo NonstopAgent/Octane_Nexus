@@ -8,7 +8,7 @@ import { timingSafeEqual } from 'crypto';
  */
 
 export type CronAuthResult =
-  | { ok: true }
+  | { ok: true; weak?: boolean }
   | { ok: false; status: 401 | 500; error: string };
 
 /** Only the variables these helpers read — keeps them trivially testable. */
@@ -35,34 +35,58 @@ function safeEqual(a: string, b: string): boolean {
 /**
  * Authorize a Vercel Cron invocation.
  *
- * Vercel's documented mechanism is the CRON_SECRET bearer token and nothing
- * else. The `x-vercel-cron` header is NOT an authentication signal — any
- * caller can set it — so it is deliberately not honoured here.
+ * The CRON_SECRET bearer token is the only mechanism Vercel documents, so once
+ * it is configured it is the ONLY thing accepted — no header or User-Agent can
+ * substitute for it. That matters: otherwise setting the secret would
+ * paradoxically leave the endpoint no better protected than before.
  *
- * When CRON_SECRET is absent we fail closed in production rather than leaving
- * a service-role route open to the internet.
+ * While the secret is unset there is one stopgap. Vercel's cron User-Agent is
+ * accepted, loudly flagged as weak by the caller. This is deliberate and hard
+ * won: this route previously failed closed with a 401 on every scheduled run
+ * for weeks, and because Vercel counts a 401 as a successful HTTP response,
+ * nothing alerted and the entire product silently stopped generating. Failing
+ * closed on a missing env var reproduces exactly that outage. The User-Agent
+ * is trivially spoofable, so the worst case is someone else spending quota —
+ * bounded by the brief idempotency guard and the 6-hour channel-sync skip, and
+ * closed completely the moment CRON_SECRET is set.
+ *
+ * With no secret and no Vercel signal at all, we fail with a 500 rather than a
+ * 401, because a server error is visible in monitoring where a plausible
+ * rejection is not.
  */
 export function checkCronAuth(
   headers: { get(name: string): string | null },
   env: SecurityEnv = process.env
 ): CronAuthResult {
   const secret = env.CRON_SECRET?.trim();
+  const auth = headers.get('authorization') ?? '';
 
-  if (!secret) {
-    if (isProductionRuntime(env)) {
-      return {
-        ok: false,
-        status: 500,
-        error:
-          'CRON_SECRET is not configured. Set it in the deployment environment before cron routes will run.',
-      };
+  if (secret) {
+    if (safeEqual(auth, `Bearer ${secret}`)) {
+      return { ok: true };
     }
-    return { ok: true };
+    return {
+      ok: false,
+      status: 401,
+      error: `CRON_SECRET is set but the Authorization header did not match (header ${
+        auth ? 'present but different' : 'absent'
+      }). If you rotated CRON_SECRET in the Vercel dashboard, redeploy — env changes do not reach a running deployment.`,
+    };
   }
 
-  const auth = headers.get('authorization') ?? '';
-  if (!safeEqual(auth, `Bearer ${secret}`)) {
-    return { ok: false, status: 401, error: 'Unauthorized' };
+  // No secret configured. Keep the product running on Vercel's own cron
+  // User-Agent, but make the weakness impossible to miss in the logs.
+  if (/vercel-cron/i.test(headers.get('user-agent') ?? '')) {
+    return { ok: true, weak: true };
+  }
+
+  if (isProductionRuntime(env)) {
+    return {
+      ok: false,
+      status: 500,
+      error:
+        'CRON_SECRET is not configured and no Vercel cron signal was present. Set CRON_SECRET in the deployment environment and redeploy.',
+    };
   }
 
   return { ok: true };

@@ -33,7 +33,17 @@ import {
 export async function GET(req: NextRequest) {
   const cronAuth = checkCronAuth(req.headers);
   if (!cronAuth.ok) {
-    return NextResponse.json({ error: cronAuth.error }, { status: cronAuth.status });
+    console.error(`[brief-worker] REJECTED (${cronAuth.status}): ${cronAuth.error}`);
+    return NextResponse.json(
+      { error: 'Unauthorized', reason: cronAuth.error },
+      { status: cronAuth.status }
+    );
+  }
+  if (cronAuth.weak) {
+    console.warn(
+      '[brief-worker] authorized on Vercel cron User-Agent alone because CRON_SECRET is unset. ' +
+        'That header is spoofable — set CRON_SECRET in Vercel and redeploy.'
+    );
   }
 
   const startedAt = Date.now();

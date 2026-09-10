@@ -36,7 +36,7 @@ describe('checkCronAuth', () => {
     assert.equal(result.ok === false && result.status, 401);
   });
 
-  it('does NOT accept a forged x-vercel-cron header', () => {
+  it('does NOT accept a forged x-vercel-cron header once a secret is set', () => {
     // Regression guard: this header used to be an unconditional bypass.
     const result = checkCronAuth(headers({ 'x-vercel-cron': '1' }), {
       CRON_SECRET: 's3cret',
@@ -46,7 +46,29 @@ describe('checkCronAuth', () => {
     assert.equal(result.ok === false && result.status, 401);
   });
 
-  it('fails CLOSED in production when CRON_SECRET is unset', () => {
+  it('does NOT accept the cron User-Agent once a secret is set', () => {
+    // Otherwise configuring the secret would leave the route no safer.
+    const result = checkCronAuth(headers({ 'user-agent': 'vercel-cron/1.0' }), {
+      CRON_SECRET: 's3cret',
+      NODE_ENV: 'production',
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.ok === false && result.status, 401);
+  });
+
+  it('accepts the Vercel cron User-Agent while CRON_SECRET is unset, flagged weak', () => {
+    // The product ran for weeks on this path. Failing closed here reproduced a
+    // silent total outage, so it stays until the secret is configured.
+    const result = checkCronAuth(headers({ 'user-agent': 'vercel-cron/1.0' }), {
+      NODE_ENV: 'production',
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.ok === true && result.weak, true);
+  });
+
+  it('fails with 500, not 401, when there is no secret and no Vercel signal', () => {
+    // A 500 is visible in monitoring; a 401 reads as a normal rejection and is
+    // exactly how the previous outage stayed invisible for a month.
     const result = checkCronAuth(headers(), {
       NODE_ENV: 'production',
     });
@@ -54,7 +76,7 @@ describe('checkCronAuth', () => {
     assert.equal(result.ok === false && result.status, 500);
   });
 
-  it('fails CLOSED on Vercel when CRON_SECRET is unset', () => {
+  it('fails with 500 on Vercel when CRON_SECRET is unset and no signal', () => {
     const result = checkCronAuth(headers(), {
       VERCEL_ENV: 'preview',
     });
