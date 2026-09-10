@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
     //
     // Deliberately fire-and-forget and fully swallowed. A memory write must
     // never turn a working answer into a failed request.
-    void captureExchange(session.user.id, messages as NexusChatMessage[], reply);
+    void captureExchange(user.id, messages as NexusChatMessage[], reply);
 
     return NextResponse.json({ reply });
   } catch (error: unknown) {
