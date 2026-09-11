@@ -11,6 +11,32 @@ wrong definition of "correct."
 
 ---
 
+## STOP — confirm which repository you are in
+
+There are **two similarly-named repos** on the NonstopAgent account, and they are
+not forks of each other — they share no commits at all.
+
+| | |
+|---|---|
+| ✅ **`NonstopAgent/Octane_Nexus`** (**underscore**) | The live product. Deploys to Vercel `octane-nexus-6em9`. Has `docs/`, `lib/briefQueue.ts`, `lib/briefPipeline.ts`, `app/api/cron/brief-worker/`. |
+| ❌ `NonstopAgent/Octane-Nexus` (**hyphen**) | The abandoned pre-pivot codebase. Has `/lab`, `/library`, `/identity`, `/nexus` routes. No `docs/` directory, ever. |
+
+Run this first:
+
+```bash
+git remote -v      # must show Octane_Nexus.git — underscore, not hyphen
+ls docs/AUDIT_BRIEF.md
+```
+
+If `docs/` does not exist, **you are in the hyphen repo — stop and say so.** Do
+not audit it, do not open a PR against it, and do not reconstruct this brief
+from memory. An agent already burned 37 minutes standing up a dev environment
+there before anyone noticed (2026-09-10).
+
+The hyphen repo is, fittingly, the very product that §1a's stale files describe.
+
+---
+
 ## 0. Rules of engagement
 
 - **This is a read-only audit.** Produce a findings list. Do not change code, do
