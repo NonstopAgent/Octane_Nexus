@@ -137,6 +137,51 @@ function formatSubs(n: number): string {
   return `${n} subs`;
 }
 
+type PatternItem = DailyBriefRow['your_patterns'][number];
+
+/** AI briefs store a generic connect/import placeholder when the creator has no videos. */
+function isPlaceholderPattern(p: PatternItem): boolean {
+  if (p.evidence?.length) return false;
+  const text = p.insight.toLowerCase();
+  return (
+    text.includes('connect youtube') ||
+    text.includes('import your videos') ||
+    text.includes('unlock pattern')
+  );
+}
+
+/** Empty-state copy for YOUR PATTERNS — mirrors the checklist states above. */
+function yourPatternsEmptyMessage(
+  youtubeConnected: boolean | null,
+  youtubeSynced: boolean,
+  hasImportedVideos: boolean
+): { text: string; link?: { href: string; label: string } } {
+  if (youtubeConnected === null) {
+    return { text: 'Loading connection status…' };
+  }
+  if (!youtubeConnected) {
+    return {
+      text: 'Connect YouTube and import your videos to unlock pattern detection.',
+      link: { href: '/dashboard/settings', label: 'Connect YouTube' },
+    };
+  }
+  if (!youtubeSynced && !hasImportedVideos) {
+    return {
+      text: 'Import your videos from Settings to unlock pattern detection.',
+      link: { href: '/dashboard/settings', label: 'Import videos' },
+    };
+  }
+  if (!hasImportedVideos) {
+    return {
+      text:
+        'This channel has no uploads yet — pattern detection will start once you publish your first video.',
+    };
+  }
+  return {
+    text: 'No strong patterns detected in your videos yet. Keep publishing — we\u2019ll surface what works.',
+  };
+}
+
 export default function DailyBriefPage() {
   const [brief, setBrief] = useState<DailyBriefRow | null>(null);
   const [briefLoading, setBriefLoading] = useState(true);
@@ -151,6 +196,7 @@ export default function DailyBriefPage() {
   // Connection status — used to render accurate guidance instead of generic
   // "Connect YouTube" instructions even when the user is already connected.
   const [youtubeConnected, setYoutubeConnected] = useState<boolean | null>(null);
+  const [youtubeSynced, setYoutubeSynced] = useState<boolean>(false);
   const [hasImportedVideos, setHasImportedVideos] = useState<boolean>(false);
 
   const loadBrief = useCallback(async () => {
@@ -203,6 +249,7 @@ export default function DailyBriefPage() {
       };
       const yt = (data.connections || []).find((c) => c.provider === 'youtube');
       setYoutubeConnected(!!yt);
+      setYoutubeSynced(!!yt?.last_synced_at);
       // "Videos imported" only if the sync ran AND actually found videos.
       // A synced channel with zero uploads should not claim videos are imported.
       setHasImportedVideos(!!yt && (yt.imported_video_count ?? 0) > 0);
@@ -643,23 +690,53 @@ export default function DailyBriefPage() {
               <h3 className="text-sm font-semibold uppercase tracking-wide text-amber-400/90">
                 Your patterns
               </h3>
-              <ul className="mt-3 space-y-3">
-                {(brief.your_patterns || []).map((p, i) => (
-                  <li key={i} className="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
-                    <p className="text-slate-100">{p.insight}</p>
-                    {p.evidence?.length ? (
-                      <ul className="mt-2 list-disc pl-5 text-xs text-slate-400">
-                        {p.evidence.map((e, j) => (
-                          <li key={j}>{e}</li>
-                        ))}
-                      </ul>
+              {(() => {
+                const realPatterns = (brief.your_patterns || []).filter(
+                  (p) => !isPlaceholderPattern(p)
+                );
+                if (realPatterns.length > 0) {
+                  return (
+                    <ul className="mt-3 space-y-3">
+                      {realPatterns.map((p, i) => (
+                        <li
+                          key={i}
+                          className="rounded-xl border border-slate-800 bg-slate-950/50 p-4"
+                        >
+                          <p className="text-slate-100">{p.insight}</p>
+                          {p.evidence?.length ? (
+                            <ul className="mt-2 list-disc pl-5 text-xs text-slate-400">
+                              {p.evidence.map((e, j) => (
+                                <li key={j}>{e}</li>
+                              ))}
+                            </ul>
+                          ) : null}
+                          <p className="mt-1 text-xs uppercase text-slate-600">
+                            confidence: {p.confidence}
+                          </p>
+                        </li>
+                      ))}
+                    </ul>
+                  );
+                }
+                const empty = yourPatternsEmptyMessage(
+                  youtubeConnected,
+                  youtubeSynced,
+                  hasImportedVideos
+                );
+                return (
+                  <p className="mt-3 text-sm text-slate-500">
+                    {empty.text}
+                    {empty.link ? (
+                      <>
+                        {' '}
+                        <Link href={empty.link.href} className="text-amber-400 hover:underline">
+                          {empty.link.label}
+                        </Link>
+                      </>
                     ) : null}
-                    <p className="mt-1 text-xs uppercase text-slate-600">
-                      confidence: {p.confidence}
-                    </p>
-                  </li>
-                ))}
-              </ul>
+                  </p>
+                );
+              })()}
             </div>
 
             {/* Today's idea */}
