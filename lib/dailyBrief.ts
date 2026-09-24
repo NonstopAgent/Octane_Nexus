@@ -303,7 +303,7 @@ Output exactly this JSON structure (no other keys, no markdown, no preamble):
 
 RULES:
 - competitor_insights: ONLY use videos from the COMPETITOR OUTLIER VIDEOS section above. These are mathematically proven outliers. Pick the top 3 by outlier_score. If no outliers detected, return [].
-- your_patterns: 2-3 patterns from THEIR actual videos. If they have own outliers, reference those specifically. If they have no videos yet, return [{"insight": "Connect YouTube and import your videos to unlock pattern detection", "evidence": [], "confidence": "low"}].
+- your_patterns: 2-3 patterns from THEIR actual videos. If they have own outliers, reference those specifically. If they have no videos in THEIR TOP-PERFORMING or MOST RECENT sections (both show "(none yet)"), return [].
 - todays_idea: ONE idea. Ground it in a specific outlier hook_type that's working in their niche. If they have own outliers, adapt the format that worked for them. If creator memory says they ignore certain formats, do NOT suggest those formats.
 - Match their voice/style if provided.
 - The hook must be a real opening line, not a description of one.
